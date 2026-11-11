@@ -136,4 +136,31 @@ enum SharedStore {
     static func clearUnpinnedClipItems() {
         saveClipItems(loadClipItems().filter { $0.pinned })
     }
+
+    // MARK: - 変換の学習（読み → 最後に選んだ候補）
+
+    private static let keyLearned = "rb_learnedConversions_v1"
+
+    static func loadLearnedConversions() -> [String: String] {
+        guard let data = defaults.data(forKey: keyLearned),
+              let map = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return [:]
+        }
+        return map
+    }
+
+    static func recordLearnedConversion(reading: String, chosen: String) {
+        guard !reading.isEmpty, reading != chosen else { return }
+        var map = loadLearnedConversions()
+        map[reading] = chosen
+        if map.count > 500 {
+            // 古いものから間引く（順序は保証しないが上限だけ守る）
+            for key in Array(map.keys).prefix(map.count - 500) {
+                map.removeValue(forKey: key)
+            }
+        }
+        if let data = try? JSONEncoder().encode(map) {
+            defaults.set(data, forKey: keyLearned)
+        }
+    }
 }

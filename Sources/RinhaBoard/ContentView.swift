@@ -30,7 +30,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Gboard風の自作キーボード")
                     .font(.headline)
-                Text("QWERTY配列、地球儀キーで他のキーボードへ切替、数字は「QWERTY数字／テンキー」の2種類、クリップボード履歴つき。ツールバーの「あ」ボタンでローマ字→ひらがな入力もできます（漢字変換はなし）。")
+                Text("QWERTY配列、地球儀キーで他のキーボードへ切替、数字は「QWERTY数字／テンキー」の2種類、クリップボード履歴つき。ツールバーの「あ」ボタンでローマ字入力＋かな漢字変換もできます。")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -150,8 +150,8 @@ struct ContentView: View {
         Section(header: Text("仕様メモ")) {
             Text("・ 地球儀キーはタップで次のキーボード、長押しでキーボード一覧が出ます（iOS標準の動き）。")
             Text("・ パスワード入力欄などでは、iOSの仕様で自動的に標準キーボードに切り替わります。")
-            Text("・ ローマ字入力はひらがなまでです。漢字変換が要る場合は今後の課題（辞書エンジンが必要）。")
-            Text("・ バージョン 0.1.0")
+            Text("・ かな漢字変換は同梱辞書（Mozcの辞書データから生成、約21万件）＋簡易文節スコア方式です。スペースで先頭候補を確定、候補をタップで選択。選んだ候補は学習して次回から優先されます。文全体を一括変換するタイプではないので、長い文は文節ごとに確定するのがコツです。")
+            Text("・ バージョン 0.2.0")
             .font(.footnote)
             .foregroundColor(.secondary)
         }

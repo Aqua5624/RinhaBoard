@@ -20,6 +20,9 @@ enum KeyAction {
     case insertClip(String)
     case pinClip(UUID)
     case deleteClip(UUID)
+    case candidate(Int)        // 変換候補の選択
+    case commitComposing       // 入力中を変換した状態で全部確定
+    case clearComposing        // 入力中を破棄
 }
 
 final class KBButton: UIButton {
@@ -45,13 +48,20 @@ final class KeyboardViewController: UIInputViewController {
     private var mode: KBMode = .letters
     private var lang: InputLang = .en
     private var shiftState: ShiftState = .off
+    /// かなモードで変換確定前のローマ字の残り（例 "sh"）
     private var pendingRomaji: String = ""
+    /// かなモードで変換確定前のかな（例 "きょうは"）。文書にはまだ入っていない
+    private var composingKana: String = ""
+    private var currentCandidates: [ConversionCandidate] = []
     private var lastShiftTapAt: Date?
 
     private let toolbar = UIStackView()
     private let toolbarLabel = UILabel()
     private var toolbarButtons: [KBButton] = []
     private let contentStack = UIStackView()
+    private let stripScroll = UIScrollView()
+    private let stripStack = UIStackView()
+    private var stripHeightConstraint: NSLayoutConstraint?
     private var heightConstraint: NSLayoutConstraint?
 
     private var backspaceTimer: Timer?
@@ -77,6 +87,25 @@ final class KeyboardViewController: UIInputViewController {
             root.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
             root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
         ])
+
+        // 変換候補バー（かな入力中だけ出す）
+        stripScroll.showsHorizontalScrollIndicator = false
+        stripStack.axis = .horizontal
+        stripStack.spacing = 6
+        stripStack.alignment = .fill
+        stripStack.translatesAutoresizingMaskIntoConstraints = false
+        stripScroll.addSubview(stripStack)
+        NSLayoutConstraint.activate([
+            stripStack.leadingAnchor.constraint(equalTo: stripScroll.contentLayoutGuide.leadingAnchor),
+            stripStack.trailingAnchor.constraint(equalTo: stripScroll.contentLayoutGuide.trailingAnchor),
+            stripStack.topAnchor.constraint(equalTo: stripScroll.contentLayoutGuide.topAnchor),
+            stripStack.bottomAnchor.constraint(equalTo: stripScroll.contentLayoutGuide.bottomAnchor),
+            stripStack.heightAnchor.constraint(equalTo: stripScroll.frameLayoutGuide.heightAnchor),
+        ])
+        let sh = stripScroll.heightAnchor.constraint(equalToConstant: 0)
+        sh.isActive = true
+        stripHeightConstraint = sh
+        root.addArrangedSubview(stripScroll)
 
         // ツールバー（Gboard風の上の帯）
         toolbar.axis = .horizontal
@@ -109,16 +138,12 @@ final class KeyboardViewController: UIInputViewController {
         if mode == .clipboard { rebuildAll() }
     }
 
-    override func textDidChange(_ textInput: UITextInput?) {
-        super.textDidChange(textInput)
-    }
-
     // MARK: ツールバー
 
     private func rebuildAll() {
         rebuildToolbar()
         rebuildContent()
-        updateHeight()
+        refreshCandidates()
     }
 
     private func rebuildToolbar() {
@@ -147,13 +172,11 @@ final class KeyboardViewController: UIInputViewController {
             return b
         }
 
-        // クリップボード（パネル開閉）
         toolbar.addArrangedSubview(toolButton(
             symbol: mode == .clipboard ? "keyboard" : "doc.on.clipboard",
             title: nil,
             action: .toggleClipboard))
 
-        // 英字モードでは EN/あ 切替、数字モードでは並び方切替
         if mode == .letters {
             toolbar.addArrangedSubview(toolButton(
                 symbol: nil,
@@ -178,33 +201,160 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func updateToolbarLabel() {
-        if lang == .kana && mode == .letters {
-            if pendingRomaji.isEmpty {
-                toolbarLabel.text = "ローマ字入力中"
-            } else {
-                toolbarLabel.text = "入力中: \(pendingRomaji)"
-            }
-        } else if mode == .clipboard {
+        if mode == .clipboard {
             let count = SharedStore.loadClipItems().count
             toolbarLabel.text = hasFullAccess ? "クリップボード \(count)件" : "フルアクセスが必要です"
+        } else if lang == .kana && mode == .letters {
+            toolbarLabel.text = effectiveComposing().isEmpty ? "ローマ字入力中" : ""
         } else {
             toolbarLabel.text = ""
         }
     }
 
     private func updateHeight() {
-        let target: CGFloat
+        let base: CGFloat
         switch mode {
         case .letters:
-            target = SharedStore.showNumberRow ? 304 : 262
+            base = SharedStore.showNumberRow ? 304 : 262
         case .numbers:
-            target = SharedStore.numberStyle == .tenkey ? 312 : 262
+            base = SharedStore.numberStyle == .tenkey ? 312 : 262
         case .symbols:
-            target = 262
+            base = 262
         case .clipboard:
-            target = 312
+            base = 312
         }
-        heightConstraint?.constant = target
+        let strip: CGFloat = currentCandidates.isEmpty ? 0 : 42
+        heightConstraint?.constant = base + strip
+        stripHeightConstraint?.constant = currentCandidates.isEmpty ? 0 : 36
+    }
+
+    // MARK: 変換候補バー
+
+    /// 入力中のかな全体（確定済みかな＋ローマ字残りを無理やりかな化したもの）
+    private func effectiveComposing() -> String {
+        if pendingRomaji.isEmpty { return composingKana }
+        return composingKana + RomajiKana.process(pendingRomaji, flush: true).committed
+    }
+
+    /// ローマ字残りをかなとして composingKana に取り込む
+    private func materializeComposing() {
+        guard !pendingRomaji.isEmpty else { return }
+        composingKana += RomajiKana.process(pendingRomaji, flush: true).committed
+        pendingRomaji = ""
+    }
+
+    private func refreshCandidates() {
+        let eff = effectiveComposing()
+        if lang == .kana && mode == .letters && !eff.isEmpty {
+            var cands = KanjiConverter.candidates(for: eff)
+            // 学習：前にこの読みで選んだ候補があれば先頭へ
+            let learned = SharedStore.loadLearnedConversions()
+            if let idx = cands.firstIndex(where: { cand in
+                learned[String(eff.prefix(cand.consumed))] == cand.text
+            }), idx != 0 {
+                let c = cands.remove(at: idx)
+                cands.insert(c, at: 0)
+            }
+            currentCandidates = cands
+        } else {
+            currentCandidates = []
+        }
+        rebuildStrip()
+        updateHeight()
+        updateToolbarLabel()
+    }
+
+    private func rebuildStrip() {
+        stripStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard !currentCandidates.isEmpty else { return }
+
+        let composingLabel = UILabel()
+        composingLabel.text = effectiveComposing()
+        composingLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        composingLabel.textColor = .secondaryLabel
+        stripStack.addArrangedSubview(composingLabel)
+
+        for (i, cand) in currentCandidates.enumerated() {
+            let b = KBButton(type: .system)
+            b.setTitle(cand.text, for: .normal)
+            b.setTitleColor(.label, for: .normal)
+            b.titleLabel?.font = .systemFont(ofSize: 16)
+            b.backgroundColor = normalKeyColor()
+            b.layer.cornerRadius = 6
+            b.contentEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+            b.action = .candidate(i)
+            b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+            stripStack.addArrangedSubview(b)
+        }
+
+        let commit = KBButton(type: .system)
+        commit.setTitle("✓確定", for: .normal)
+        commit.setTitleColor(.systemBlue, for: .normal)
+        commit.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        commit.contentEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
+        commit.action = .commitComposing
+        commit.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+        stripStack.addArrangedSubview(commit)
+
+        let clear = KBButton(type: .system)
+        clear.setTitle("✕", for: .normal)
+        clear.setTitleColor(.secondaryLabel, for: .normal)
+        clear.titleLabel?.font = .systemFont(ofSize: 14)
+        clear.contentEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
+        clear.action = .clearComposing
+        clear.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+        stripStack.addArrangedSubview(clear)
+
+        stripScroll.setContentOffset(.zero, animated: false)
+    }
+
+    /// 候補を1つ確定する：文書へ挿入し、消費した分だけ入力中から引く
+    private func commitCandidate(at index: Int) {
+        materializeComposing()
+        let cands = KanjiConverter.candidates(for: composingKana)
+        // 学習の並び替えは refresh 側の表示と一致させるため、保存済み候補を先頭にした列を使う
+        var ordered = cands
+        let learned = SharedStore.loadLearnedConversions()
+        if let idx = ordered.firstIndex(where: { cand in
+            learned[String(composingKana.prefix(cand.consumed))] == cand.text
+        }), idx != 0 {
+            let c = ordered.remove(at: idx)
+            ordered.insert(c, at: 0)
+        }
+        guard ordered.indices.contains(index) else { return }
+        let cand = ordered[index]
+        let segment = String(composingKana.prefix(cand.consumed))
+        textDocumentProxy.insertText(cand.text)
+        SharedStore.recordLearnedConversion(reading: segment, chosen: cand.text)
+        composingKana = String(composingKana.dropFirst(cand.consumed))
+        refreshCandidates()
+    }
+
+    /// 入力中を「先頭候補で変換しながら」全部確定する
+    private func commitConvertedAll() {
+        materializeComposing()
+        var guardCount = 0
+        while !composingKana.isEmpty && guardCount < 64 {
+            guardCount += 1
+            let before = composingKana
+            commitCandidate(at: 0)
+            if composingKana == before { break }
+        }
+        refreshCandidates()
+    }
+
+    /// 入力中をかなのまま全部確定する
+    private func commitRawAll() {
+        materializeComposing()
+        if !composingKana.isEmpty {
+            textDocumentProxy.insertText(composingKana)
+            composingKana = ""
+        }
+        refreshCandidates()
+    }
+
+    private var hasComposing: Bool {
+        !composingKana.isEmpty || !pendingRomaji.isEmpty
     }
 
     // MARK: 本体レイアウト
@@ -226,7 +376,6 @@ final class KeyboardViewController: UIInputViewController {
 
     private func rebuildContent() {
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        // クリップボードだけは「リストが伸びて下の行は固定高さ」にしたいので分布を変える
         contentStack.distribution = (mode == .clipboard) ? .fill : .fillEqually
         switch mode {
         case .letters: buildLetters()
@@ -371,20 +520,19 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func buildTenkey() {
-        func numRow(_ labels: [Spec]) -> UIStackView { makeRow(labels) }
-        contentStack.addArrangedSubview(numRow([
+        contentStack.addArrangedSubview(makeRow([
             Spec("1", .text("1")), Spec("2", .text("2")), Spec("3", .text("3")),
             Spec("", .backspace, symbol: "delete.left"),
         ]))
-        contentStack.addArrangedSubview(numRow([
+        contentStack.addArrangedSubview(makeRow([
             Spec("4", .text("4")), Spec("5", .text("5")), Spec("6", .text("6")),
             Spec("+", .text("+")),
         ]))
-        contentStack.addArrangedSubview(numRow([
+        contentStack.addArrangedSubview(makeRow([
             Spec("7", .text("7")), Spec("8", .text("8")), Spec("9", .text("9")),
             Spec("-", .text("-")),
         ]))
-        contentStack.addArrangedSubview(numRow([
+        contentStack.addArrangedSubview(makeRow([
             Spec("#+=", .showSymbols, small: true),
             Spec(",", .text(",")),
             Spec("0", .text("0")),
@@ -528,34 +676,33 @@ final class KeyboardViewController: UIInputViewController {
             lastShiftTapAt = now
             rebuildAll()
         case .backspace:
-            if lang == .kana, mode == .letters, !pendingRomaji.isEmpty {
-                pendingRomaji.removeLast()
-                updateToolbarLabel()
-            } else {
-                textDocumentProxy.deleteBackward()
-            }
+            deleteBackwardSmart()
         case .space:
-            flushRomaji()
-            textDocumentProxy.insertText(" ")
+            if lang == .kana && mode == .letters && hasComposing {
+                // 変換：先頭候補を確定（残りは入力中のまま）
+                commitCandidate(at: 0)
+            } else {
+                textDocumentProxy.insertText(" ")
+            }
         case .returnKey:
-            flushRomaji()
+            if lang == .kana && hasComposing { commitConvertedAll() }
             textDocumentProxy.insertText("\n")
         case .globe:
             advanceToNextInputMode()
         case .langToggle:
-            flushRomaji()
+            if hasComposing { commitConvertedAll() }
             lang = lang == .en ? .kana : .en
             rebuildAll()
         case .showLetters:
-            flushRomaji()
+            if hasComposing { commitConvertedAll() }
             mode = .letters
             rebuildAll()
         case .showNumbers:
-            flushRomaji()
+            if hasComposing { commitConvertedAll() }
             mode = .numbers
             rebuildAll()
         case .showSymbols:
-            flushRomaji()
+            if hasComposing { commitConvertedAll() }
             mode = .symbols
             rebuildAll()
         case .numberStyleToggle:
@@ -565,7 +712,7 @@ final class KeyboardViewController: UIInputViewController {
             if mode == .clipboard {
                 mode = .letters
             } else {
-                flushRomaji()
+                if hasComposing { commitConvertedAll() }
                 captureClipboardIfNeeded()
                 mode = .clipboard
             }
@@ -580,7 +727,7 @@ final class KeyboardViewController: UIInputViewController {
             SharedStore.clearUnpinnedClipItems()
             rebuildAll()
         case .insertClip(let text):
-            flushRomaji()
+            if hasComposing { commitConvertedAll() }
             textDocumentProxy.insertText(text)
             mode = .letters
             rebuildAll()
@@ -590,39 +737,61 @@ final class KeyboardViewController: UIInputViewController {
         case .deleteClip(let id):
             SharedStore.removeClipItem(id: id)
             rebuildAll()
+        case .candidate(let index):
+            commitCandidate(at: index)
+        case .commitComposing:
+            commitConvertedAll()
+        case .clearComposing:
+            composingKana = ""
+            pendingRomaji = ""
+            refreshCandidates()
         }
         tapFeedback()
     }
 
-    /// 文字キー：かなモードではローマ字変換を通し、英字モードでは Shift を反映する
+    private func deleteBackwardSmart() {
+        if lang == .kana && mode == .letters && hasComposing {
+            if !pendingRomaji.isEmpty {
+                pendingRomaji.removeLast()
+            } else {
+                composingKana.removeLast()
+            }
+            refreshCandidates()
+        } else {
+            textDocumentProxy.deleteBackward()
+        }
+    }
+
+    /// 文字キー：かなモードでは変換バッファへ、英字モードでは Shift を反映して直接挿入
     private func insertTextSmart(_ raw: String) {
         if lang == .kana && mode == .letters {
             if raw == "," {
-                flushRomaji()
+                commitConvertedAll()
                 textDocumentProxy.insertText("、")
                 return
             }
             if raw == "." {
-                flushRomaji()
+                commitConvertedAll()
                 textDocumentProxy.insertText("。")
                 return
             }
-            if raw.count == 1, raw.first!.isLetter, raw.first!.isASCII {
+            if raw.count == 1, let ch = raw.first, ch.isLetter, ch.isASCII {
                 pendingRomaji += raw.lowercased()
                 let result = RomajiKana.process(pendingRomaji, flush: false)
                 if !result.committed.isEmpty {
-                    textDocumentProxy.insertText(result.committed)
+                    composingKana += result.committed
                 }
                 pendingRomaji = result.pending
-                updateToolbarLabel()
+                refreshCandidates()
                 return
             }
-            flushRomaji()
+            // 数字行など：入力中を確定してからそのまま挿入
+            commitRawAll()
             textDocumentProxy.insertText(raw)
             return
         }
-        // 英字モード
-        flushRomaji()
+        // 英字モード（および数字・記号モード）
+        if hasComposing { commitRawAll() }
         if shiftState != .off, raw.count == 1, raw.first!.isLetter {
             textDocumentProxy.insertText(raw.uppercased())
             if shiftState == .once {
@@ -634,28 +803,12 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    private func flushRomaji() {
-        guard !pendingRomaji.isEmpty else { return }
-        let result = RomajiKana.process(pendingRomaji, flush: true)
-        if !result.committed.isEmpty {
-            textDocumentProxy.insertText(result.committed)
-        }
-        pendingRomaji = ""
-        if lang == .kana { updateToolbarLabel() }
-    }
-
     @objc private func backspaceLongPress(_ gesture: UILongPressGestureRecognizer) {
         switch gesture.state {
         case .began:
             backspaceTimer?.invalidate()
             backspaceTimer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { [weak self] _ in
-                guard let self = self else { return }
-                if self.lang == .kana && self.mode == .letters && !self.pendingRomaji.isEmpty {
-                    self.pendingRomaji.removeLast()
-                    self.updateToolbarLabel()
-                } else {
-                    self.textDocumentProxy.deleteBackward()
-                }
+                self?.deleteBackwardSmart()
             }
         case .ended, .cancelled, .failed:
             backspaceTimer?.invalidate()
