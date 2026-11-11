@@ -1,0 +1,404 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		000000000000000000000014 /* RinhaBoardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000009 /* RinhaBoardApp.swift */; };
+		000000000000000000000015 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000A /* ContentView.swift */; };
+		000000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000D /* Assets.xcassets */; };
+		000000000000000000000017 /* SharedStore.swift in Sources (app) */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000B /* SharedStore.swift */; };
+		000000000000000000000018 /* RomajiKana.swift in Sources (app) */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000C /* RomajiKana.swift */; };
+		000000000000000000000019 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000F /* KeyboardViewController.swift */; };
+		00000000000000000000001A /* SharedStore.swift in Sources (keyboard) */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000B /* SharedStore.swift */; };
+		00000000000000000000001B /* RomajiKana.swift in Sources (keyboard) */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000C /* RomajiKana.swift */; };
+		00000000000000000000001C /* RinhaBoardKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000008 /* RinhaBoardKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		000000000000000000000024 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000000000013;
+			remoteInfo = RinhaBoardKeyboard;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		000000000000000000000020 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				00000000000000000000001C /* RinhaBoardKeyboard.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		000000000000000000000007 /* RinhaBoard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RinhaBoard.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000008 /* RinhaBoardKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = RinhaBoardKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000009 /* RinhaBoardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/RinhaBoard/RinhaBoardApp.swift"; sourceTree = "<group>"; };
+		00000000000000000000000A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/RinhaBoard/ContentView.swift"; sourceTree = "<group>"; };
+		00000000000000000000000B /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Shared/SharedStore.swift"; sourceTree = "<group>"; };
+		00000000000000000000000C /* RomajiKana.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Shared/RomajiKana.swift"; sourceTree = "<group>"; };
+		00000000000000000000000D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "RinhaBoard/Assets.xcassets"; sourceTree = "<group>"; };
+		00000000000000000000000E /* RinhaBoard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "RinhaBoard/RinhaBoard.entitlements"; sourceTree = "<group>"; };
+		00000000000000000000000F /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Keyboard/KeyboardViewController.swift"; sourceTree = "<group>"; };
+		000000000000000000000010 /* Info.plist (keyboard) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Keyboard/Info.plist"; sourceTree = "<group>"; };
+		000000000000000000000011 /* RinhaBoardKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Keyboard/RinhaBoardKeyboard.entitlements"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		00000000000000000000001E /* Frameworks (app) */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		000000000000000000000022 /* Frameworks (keyboard) */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		000000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000004 /* RinhaBoard */,
+				000000000000000000000005 /* Shared */,
+				000000000000000000000006 /* Keyboard */,
+				000000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		000000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000007 /* RinhaBoard.app */,
+				000000000000000000000008 /* RinhaBoardKeyboard.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		000000000000000000000004 /* RinhaBoard */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000009 /* RinhaBoardApp.swift */,
+				00000000000000000000000A /* ContentView.swift */,
+				00000000000000000000000D /* Assets.xcassets */,
+				00000000000000000000000E /* RinhaBoard.entitlements */,
+			);
+			name = RinhaBoard;
+			sourceTree = "<group>";
+		};
+		000000000000000000000005 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				00000000000000000000000B /* SharedStore.swift */,
+				00000000000000000000000C /* RomajiKana.swift */,
+			);
+			name = Shared;
+			sourceTree = "<group>";
+		};
+		000000000000000000000006 /* Keyboard */ = {
+			isa = PBXGroup;
+			children = (
+				00000000000000000000000F /* KeyboardViewController.swift */,
+				000000000000000000000010 /* Info.plist (keyboard) */,
+				000000000000000000000011 /* RinhaBoardKeyboard.entitlements */,
+			);
+			name = Keyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		000000000000000000000012 /* RinhaBoard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 00000000000000000000002D /* Build configuration list for PBXNativeTarget "RinhaBoard" */;
+			buildPhases = (
+				00000000000000000000001D /* Sources */,
+				00000000000000000000001E /* Frameworks */,
+				00000000000000000000001F /* Resources */,
+				000000000000000000000020 /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				000000000000000000000025 /* PBXTargetDependency */,
+			);
+			name = RinhaBoard;
+			productName = RinhaBoard;
+			productReference = 000000000000000000000007 /* RinhaBoard.app */;
+			productType = "com.apple.product-type.application";
+		};
+		000000000000000000000013 /* RinhaBoardKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 00000000000000000000002E /* Build configuration list for PBXNativeTarget "RinhaBoardKeyboard" */;
+			buildPhases = (
+				000000000000000000000021 /* Sources */,
+				000000000000000000000022 /* Frameworks */,
+				000000000000000000000023 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RinhaBoardKeyboard;
+			productName = RinhaBoardKeyboard;
+			productReference = 000000000000000000000008 /* RinhaBoardKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		000000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					000000000000000000000012 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					000000000000000000000013 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 00000000000000000000002C /* Build configuration list for PBXProject "RinhaBoard" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 000000000000000000000002;
+			productRefGroup = 000000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				000000000000000000000012 /* RinhaBoard */,
+				000000000000000000000013 /* RinhaBoardKeyboard */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		00000000000000000000001F /* Resources (app) */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000016 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		000000000000000000000023 /* Resources (keyboard) */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		00000000000000000000001D /* Sources (app) */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000014 /* RinhaBoardApp.swift in Sources */,
+				000000000000000000000015 /* ContentView.swift in Sources */,
+				000000000000000000000017 /* SharedStore.swift in Sources (app) */,
+				000000000000000000000018 /* RomajiKana.swift in Sources (app) */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		000000000000000000000021 /* Sources (keyboard) */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				000000000000000000000019 /* KeyboardViewController.swift in Sources */,
+				00000000000000000000001A /* SharedStore.swift in Sources (keyboard) */,
+				00000000000000000000001B /* RomajiKana.swift in Sources (keyboard) */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		000000000000000000000025 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000000000013 /* RinhaBoardKeyboard */;
+			targetProxy = 000000000000000000000024 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		000000000000000000000026 /* Debug (project) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SWIFT_VERSION = 5.0;
+
+			};
+			name = Debug;
+		};
+		000000000000000000000027 /* Release (project) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SWIFT_VERSION = 5.0;
+
+			};
+			name = Release;
+		};
+		000000000000000000000028 /* Debug (app) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = RinhaBoard/RinhaBoard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = RinhaBoard;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = "";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMBED_LIBRARIES = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+
+			};
+			name = Debug;
+		};
+		000000000000000000000029 /* Release (app) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = RinhaBoard/RinhaBoard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = RinhaBoard;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = "";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMBED_LIBRARIES = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+
+			};
+			name = Release;
+		};
+		00000000000000000000002A /* Debug (keyboard) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Keyboard/RinhaBoardKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Keyboard/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard.Keyboard;
+				PRODUCT_NAME = RinhaBoardKeyboard;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+
+			};
+			name = Debug;
+		};
+		00000000000000000000002B /* Release (keyboard) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Keyboard/RinhaBoardKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Keyboard/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard.Keyboard;
+				PRODUCT_NAME = RinhaBoardKeyboard;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		00000000000000000000002C /* Build configuration list for PBXProject "RinhaBoard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000000000026 /* Debug (project) */,
+				000000000000000000000027 /* Release (project) */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		00000000000000000000002D /* Build configuration list for PBXNativeTarget "RinhaBoard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000000000028 /* Debug (app) */,
+				000000000000000000000029 /* Release (app) */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		00000000000000000000002E /* Build configuration list for PBXNativeTarget "RinhaBoardKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00000000000000000000002A /* Debug (keyboard) */,
+				00000000000000000000002B /* Release (keyboard) */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 000000000000000000000001 /* Project object */;
+}
