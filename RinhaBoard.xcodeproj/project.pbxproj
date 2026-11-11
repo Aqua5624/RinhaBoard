@@ -16,7 +16,8 @@
 		00000000000000000000001A /* SharedStore.swift in Sources (keyboard) */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000B /* SharedStore.swift */; };
 		00000000000000000000001B /* RomajiKana.swift in Sources (keyboard) */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000C /* RomajiKana.swift */; };
 		000000000000000000000028 /* KanjiConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000026 /* KanjiConverter.swift */; };
-		000000000000000000000029 /* kana-kanji.tsv in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000027 /* kana-kanji.tsv */; };
+		000000000000000000000033 /* KanaKanjiConverterModuleWithDefaultDictionary in Frameworks */ = {isa = PBXBuildFile; productRef = 000000000000000000000036 /* KanaKanjiConverterModuleWithDefaultDictionary */; };
+		000000000000000000000034 /* KanaKanjiConverterModule in Frameworks */ = {isa = PBXBuildFile; productRef = 000000000000000000000037 /* KanaKanjiConverterModule */; };
 		00000000000000000000001C /* RinhaBoardKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000008 /* RinhaBoardKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -37,9 +38,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				000000000000000000000028 /* KanjiConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000026 /* KanjiConverter.swift */; };
-		000000000000000000000029 /* kana-kanji.tsv in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000027 /* kana-kanji.tsv */; };
-		00000000000000000000001C /* RinhaBoardKeyboard.appex in Embed App Extensions */,
+				00000000000000000000001C /* RinhaBoardKeyboard.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -58,7 +57,6 @@
 		00000000000000000000000F /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Keyboard/KeyboardViewController.swift"; sourceTree = "<group>"; };
 		000000000000000000000010 /* Info.plist (keyboard) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Keyboard/Info.plist"; sourceTree = "<group>"; };
 		000000000000000000000026 /* KanjiConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Keyboard/KanjiConverter.swift"; sourceTree = "<group>"; };
-		000000000000000000000027 /* kana-kanji.tsv */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Keyboard/Data/kana-kanji.tsv"; sourceTree = "<group>"; };
 		000000000000000000000011 /* RinhaBoardKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Keyboard/RinhaBoardKeyboard.entitlements"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -74,6 +72,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				000000000000000000000033 /* KanaKanjiConverterModuleWithDefaultDictionary in Frameworks */,
+				000000000000000000000034 /* KanaKanjiConverterModule in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -124,11 +124,8 @@
 			children = (
 				00000000000000000000000F /* KeyboardViewController.swift */,
 				000000000000000000000026 /* KanjiConverter.swift */,
-				000000000000000000000027 /* kana-kanji.tsv */,
 				000000000000000000000010 /* Info.plist (keyboard) */,
-				000000000000000000000026 /* KanjiConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Keyboard/KanjiConverter.swift"; sourceTree = "<group>"; };
-		000000000000000000000027 /* kana-kanji.tsv */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Keyboard/Data/kana-kanji.tsv"; sourceTree = "<group>"; };
-		000000000000000000000011 /* RinhaBoardKeyboard.entitlements */,
+				000000000000000000000011 /* RinhaBoardKeyboard.entitlements */,
 			);
 			name = Keyboard;
 			sourceTree = "<group>";
@@ -168,6 +165,10 @@
 			dependencies = (
 			);
 			name = RinhaBoardKeyboard;
+			packageProductDependencies = (
+				000000000000000000000036 /* KanaKanjiConverterModuleWithDefaultDictionary */,
+				000000000000000000000037 /* KanaKanjiConverterModule */,
+			);
 			productName = RinhaBoardKeyboard;
 			productReference = 000000000000000000000008 /* RinhaBoardKeyboard.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -199,6 +200,9 @@
 				Base,
 			);
 			mainGroup = 000000000000000000000002;
+			packageReferences = (
+				000000000000000000000035 /* XCRemoteSwiftPackageReference "AzooKeyKanaKanjiConverter" */,
+			);
 			productRefGroup = 000000000000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -222,7 +226,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				000000000000000000000029 /* kana-kanji.tsv in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -268,7 +271,6 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				SWIFT_VERSION = 5.0;
-
 			};
 			name = Debug;
 		};
@@ -278,7 +280,6 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				SWIFT_VERSION = 5.0;
-
 			};
 			name = Release;
 		};
@@ -299,12 +300,11 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMBED_LIBRARIES = YES;
 				TARGETED_DEVICE_FAMILY = 1;
-
 			};
 			name = Debug;
 		};
@@ -325,12 +325,11 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMBED_LIBRARIES = YES;
 				TARGETED_DEVICE_FAMILY = 1;
-
 			};
 			name = Release;
 		};
@@ -348,12 +347,11 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard.Keyboard;
 				PRODUCT_NAME = RinhaBoardKeyboard;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 1;
-
 			};
 			name = Debug;
 		};
@@ -371,12 +369,11 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard.Keyboard;
 				PRODUCT_NAME = RinhaBoardKeyboard;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 1;
-
 			};
 			name = Release;
 		};
@@ -411,6 +408,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		000000000000000000000035 /* XCRemoteSwiftPackageReference "AzooKeyKanaKanjiConverter" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/azooKey/AzooKeyKanaKanjiConverter";
+			requirement = {
+				kind = revision;
+				revision = 5a9c4f672f627c8db48241a3abc22409257f92cb;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		000000000000000000000036 /* KanaKanjiConverterModuleWithDefaultDictionary */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 000000000000000000000035 /* XCRemoteSwiftPackageReference "AzooKeyKanaKanjiConverter" */;
+			productName = KanaKanjiConverterModuleWithDefaultDictionary;
+		};
+		000000000000000000000037 /* KanaKanjiConverterModule */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 000000000000000000000035 /* XCRemoteSwiftPackageReference "AzooKeyKanaKanjiConverter" */;
+			productName = KanaKanjiConverterModule;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 000000000000000000000001 /* Project object */;
 }

@@ -43,15 +43,15 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP" Payload/
-          zip -r RinhaBoard-unsigned-v0.2.0.ipa Payload
-          ls -lh RinhaBoard-unsigned-v0.2.0.ipa
+          zip -r RinhaBoard-unsigned-v0.3.0.ipa Payload
+          ls -lh RinhaBoard-unsigned-v0.3.0.ipa
 
       - name: Upload IPA artifact
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: RinhaBoard-unsigned
-          path: RinhaBoard-unsigned-v0.2.0.ipa
+          path: RinhaBoard-unsigned-v0.3.0.ipa
           retention-days: 14
 
       - name: Publish IPA as release asset
@@ -59,9 +59,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view ipa-latest >/dev/null 2>&1; then
-            gh release upload ipa-latest RinhaBoard-unsigned-v0.2.0.ipa --clobber
+            gh release upload ipa-latest RinhaBoard-unsigned-v0.3.0.ipa --clobber
           else
-            gh release create ipa-latest RinhaBoard-unsigned-v0.2.0.ipa \
+            gh release create ipa-latest RinhaBoard-unsigned-v0.3.0.ipa \
               --title "RinhaBoard unsigned IPA (latest build)" \
               --notes "Unsigned IPA built by GitHub Actions. Sign and install with AltStore Classic or LiveContainer. Requires iOS 17 or later. Enable in Settings > General > Keyboard > Keyboards, and allow Full Access for clipboard history."
           fi

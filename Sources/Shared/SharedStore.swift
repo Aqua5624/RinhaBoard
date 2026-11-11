@@ -8,6 +8,61 @@ struct ClipItem: Codable, Identifiable, Equatable {
     var createdAt: Date = Date()
 }
 
+/// ユーザー辞書の品詞（azooKey の CID に対応させる）
+enum UserDictPartOfSpeech: String, Codable, CaseIterable, Identifiable {
+    case general   // 一般名詞
+    case proper    // 固有名詞
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .general: return "一般名詞"
+        case .proper: return "固有名詞"
+        }
+    }
+}
+
+/// ユーザー辞書の1件
+struct UserDictEntry: Codable, Identifiable, Equatable {
+    var id: UUID = UUID()
+    /// 読み（ひらがなに正規化して保存する）
+    var reading: String
+    /// 単語（変換候補として出したい表記）
+    var word: String
+    var partOfSpeech: UserDictPartOfSpeech = .proper
+    var createdAt: Date = Date()
+}
+
+extension String {
+    /// カタカナ→ひらがな変換＋前後の空白除去（ユーザー辞書の読み正規化用）
+    func hiraganaNormalized() -> String {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        var out = String.UnicodeScalarView()
+        for scalar in trimmed.unicodeScalars {
+            if (0x30A1...0x30F6).contains(scalar.value),
+               let hira = Unicode.Scalar(scalar.value - 0x60) {
+                out.append(hira)
+            } else {
+                out.append(scalar)
+            }
+        }
+        return String(out)
+    }
+
+    /// ひらがな→カタカナ変換（azooKey 辞書のルビ表記用）
+    func katakanaConverted() -> String {
+        var out = String.UnicodeScalarView()
+        for scalar in unicodeScalars {
+            if (0x3041...0x3096).contains(scalar.value),
+               let kata = Unicode.Scalar(scalar.value + 0x60) {
+                out.append(kata)
+            } else {
+                out.append(scalar)
+            }
+        }
+        return String(out)
+    }
+}
+
 /// 数字モードの並び方（「123」を押したときのレイアウト）
 enum NumberStyle: String, CaseIterable, Identifiable {
     case qwerty   // 数字・記号をQWERTY風の横並びで出す
@@ -147,6 +202,41 @@ enum SharedStore {
             return [:]
         }
         return map
+    }
+
+    // MARK: - ユーザー辞書
+
+    private static let keyUserDict = "rb_userDictionary_v1"
+
+    static func loadUserDict() -> [UserDictEntry] {
+        guard let data = defaults.data(forKey: keyUserDict),
+              let items = try? JSONDecoder().decode([UserDictEntry].self, from: data) else {
+            return []
+        }
+        return items
+    }
+
+    static func saveUserDict(_ items: [UserDictEntry]) {
+        if let data = try? JSONEncoder().encode(items) {
+            defaults.set(data, forKey: keyUserDict)
+        }
+    }
+
+    @discardableResult
+    static func addUserDictEntry(reading rawReading: String, word rawWord: String,
+                                 partOfSpeech: UserDictPartOfSpeech) -> [UserDictEntry] {
+        let reading = rawReading.hiraganaNormalized()
+        let word = rawWord.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reading.isEmpty, !word.isEmpty else { return loadUserDict() }
+        var items = loadUserDict()
+        items.removeAll { $0.reading == reading && $0.word == word }
+        items.insert(UserDictEntry(reading: reading, word: word, partOfSpeech: partOfSpeech), at: 0)
+        saveUserDict(items)
+        return items
+    }
+
+    static func removeUserDictEntry(id: UUID) {
+        saveUserDict(loadUserDict().filter { $0.id != id })
     }
 
     static func recordLearnedConversion(reading: String, chosen: String) {

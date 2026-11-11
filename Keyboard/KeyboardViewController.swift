@@ -246,16 +246,8 @@ final class KeyboardViewController: UIInputViewController {
     private func refreshCandidates() {
         let eff = effectiveComposing()
         if lang == .kana && mode == .letters && !eff.isEmpty {
-            var cands = KanjiConverter.candidates(for: eff)
-            // 学習：前にこの読みで選んだ候補があれば先頭へ
-            let learned = SharedStore.loadLearnedConversions()
-            if let idx = cands.firstIndex(where: { cand in
-                learned[String(eff.prefix(cand.consumed))] == cand.text
-            }), idx != 0 {
-                let c = cands.remove(at: idx)
-                cands.insert(c, at: 0)
-            }
-            currentCandidates = cands
+            // 学習は azooKey エンジン側が持つので、候補はそのまま使う
+            currentCandidates = KanjiConverter.candidates(for: eff)
         } else {
             currentCandidates = []
         }
@@ -308,24 +300,18 @@ final class KeyboardViewController: UIInputViewController {
         stripScroll.setContentOffset(.zero, animated: false)
     }
 
-    /// 候補を1つ確定する：文書へ挿入し、消費した分だけ入力中から引く
+    /// 候補を1つ確定する：文書へ挿入し、消費した分だけ入力中から引く。
+    /// 表示中の候補列（currentCandidates）をそのまま使う（表示と確定の不一致を避ける）。
     private func commitCandidate(at index: Int) {
         materializeComposing()
-        let cands = KanjiConverter.candidates(for: composingKana)
-        // 学習の並び替えは refresh 側の表示と一致させるため、保存済み候補を先頭にした列を使う
-        var ordered = cands
-        let learned = SharedStore.loadLearnedConversions()
-        if let idx = ordered.firstIndex(where: { cand in
-            learned[String(composingKana.prefix(cand.consumed))] == cand.text
-        }), idx != 0 {
-            let c = ordered.remove(at: idx)
-            ordered.insert(c, at: 0)
-        }
+        let ordered = currentCandidates.isEmpty
+            ? KanjiConverter.candidates(for: composingKana)
+            : currentCandidates
         guard ordered.indices.contains(index) else { return }
         let cand = ordered[index]
-        let segment = String(composingKana.prefix(cand.consumed))
         textDocumentProxy.insertText(cand.text)
-        SharedStore.recordLearnedConversion(reading: segment, chosen: cand.text)
+        // azooKey エンジン側の学習へ通知（ユーザ辞書・自前候補は対象外）
+        KanjiConverter.notifySelected(cand)
         composingKana = String(composingKana.dropFirst(cand.consumed))
         refreshCandidates()
     }

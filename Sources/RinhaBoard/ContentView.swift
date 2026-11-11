@@ -7,6 +7,10 @@ struct ContentView: View {
     @State private var showNumberRow: Bool = SharedStore.showNumberRow
     @State private var clipItems: [ClipItem] = SharedStore.loadClipItems()
     @State private var newClipText: String = ""
+    @State private var userDict: [UserDictEntry] = SharedStore.loadUserDict()
+    @State private var newReading: String = ""
+    @State private var newWord: String = ""
+    @State private var newPOS: UserDictPartOfSpeech = .proper
 
     var body: some View {
         NavigationView {
@@ -14,6 +18,7 @@ struct ContentView: View {
                 headerSection
                 setupSection
                 keyboardSettingsSection
+                userDictSection
                 clipboardSection
                 notesSection
             }
@@ -88,6 +93,69 @@ struct ContentView: View {
         }
     }
 
+    private var userDictSection: some View {
+        Section(header: Text("ユーザー辞書 (\(userDict.count)件)"),
+                footer: Text("登録した単語は、キーボードの変換候補の先頭に出ます。人名や固有名詞、よく使う言い回しの登録にどうぞ。読みはひらがなで入力してください（カタカナでも自動でひらがなになります）。")) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("読み")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(width: 44, alignment: .leading)
+                    TextField("れもん", text: $newReading)
+                        .textFieldStyle(.roundedBorder)
+                }
+                HStack {
+                    Text("単語")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(width: 44, alignment: .leading)
+                    TextField("🍋", text: $newWord)
+                        .textFieldStyle(.roundedBorder)
+                }
+                Picker("品詞", selection: $newPOS) {
+                    ForEach(UserDictPartOfSpeech.allCases) { pos in
+                        Text(pos.label).tag(pos)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Button("登録する") {
+                    let reading = newReading.hiraganaNormalized()
+                    let word = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !reading.isEmpty, !word.isEmpty else { return }
+                    SharedStore.addUserDictEntry(reading: reading, word: word, partOfSpeech: newPOS)
+                    newReading = ""
+                    newWord = ""
+                    reload()
+                }
+                .disabled(newReading.trimmingCharacters(in: .whitespaces).isEmpty
+                          || newWord.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(.vertical, 4)
+            if userDict.isEmpty {
+                Text("まだ登録がありません")
+                    .foregroundColor(.secondary)
+            }
+            ForEach(userDict) { entry in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.word)
+                        Text("\(entry.reading) ・ \(entry.partOfSpeech.label)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        SharedStore.removeUserDictEntry(id: entry.id)
+                        reload()
+                    } label: { Label("削除", systemImage: "trash") }
+                }
+            }
+        }
+    }
+
     private var clipboardSection: some View {
         Section(header: Text("クリップボード履歴 (\(clipItems.count)件)"),
                 footer: Text("キーボードを開いたタイミングで、今のクリップボードが自動保存されます（フルアクセス許可時）。タップでコピー、左スワイプで削除。📌はピン留め（「ピン以外を消す」でも残ります）。")) {
@@ -150,8 +218,8 @@ struct ContentView: View {
         Section(header: Text("仕様メモ")) {
             Text("・ 地球儀キーはタップで次のキーボード、長押しでキーボード一覧が出ます（iOS標準の動き）。")
             Text("・ パスワード入力欄などでは、iOSの仕様で自動的に標準キーボードに切り替わります。")
-            Text("・ かな漢字変換は同梱辞書（Mozcの辞書データから生成、約21万件）＋簡易文節スコア方式です。スペースで先頭候補を確定、候補をタップで選択。選んだ候補は学習して次回から優先されます。文全体を一括変換するタイプではないので、長い文は文節ごとに確定するのがコツです。")
-            Text("・ バージョン 0.2.0")
+            Text("・ かな漢字変換は azooKey の変換エンジン（AzooKeyKanaKanjiConverter）です。文全体をまとめて変換でき、選んだ候補は学習されます。スペースで先頭候補を確定、候補をタップで選択、✓確定で文全体を変換しながら確定します。")
+            Text("・ バージョン 0.3.0")
             .font(.footnote)
             .foregroundColor(.secondary)
         }
@@ -163,5 +231,6 @@ struct ContentView: View {
         autoCapture = SharedStore.autoCaptureClipboard
         showNumberRow = SharedStore.showNumberRow
         clipItems = SharedStore.loadClipItems()
+        userDict = SharedStore.loadUserDict()
     }
 }
