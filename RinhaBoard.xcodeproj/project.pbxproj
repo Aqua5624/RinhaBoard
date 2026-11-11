@@ -301,6 +301,8 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.3.0;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMBED_LIBRARIES = YES;
@@ -326,6 +328,8 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.3.0;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMBED_LIBRARIES = YES;
@@ -348,6 +352,8 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 0.3.0;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard.Keyboard;
 				PRODUCT_NAME = RinhaBoardKeyboard;
 				SKIP_INSTALL = YES;
@@ -370,6 +376,8 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 0.3.0;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard.Keyboard;
 				PRODUCT_NAME = RinhaBoardKeyboard;
 				SKIP_INSTALL = YES;
