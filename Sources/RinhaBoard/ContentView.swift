@@ -22,7 +22,7 @@ struct ContentView: View {
                 clipboardSection
                 notesSection
             }
-            .navigationTitle("RinhaBoard")
+            .navigationTitle("Sparkle Key")
             .onAppear { reload() }
         }
         .navigationViewStyle(.stack)
@@ -47,9 +47,9 @@ struct ContentView: View {
         Section(header: Text("有効化の手順")) {
             VStack(alignment: .leading, spacing: 8) {
                 step(1, "下のボタンから設定アプリを開く")
-                step(2, "一般 → キーボード → キーボード → 新しいキーボードを追加 → RinhaBoard")
-                step(3, "追加した RinhaBoard を開いて「フルアクセスを許可」をON（クリップボード履歴に必要）")
-                step(4, "どのアプリでも、キーボードの地球儀キーを押せば RinhaBoard に切り替わります")
+                step(2, "一般 → キーボード → キーボード → 新しいキーボードを追加 → Sparkle Key")
+                step(3, "追加した Sparkle Key を開いて「フルアクセスを許可」をON（クリップボード履歴に必要）")
+                step(4, "どのアプリでも、キーボードの地球儀キーを押せば Sparkle Key に切り替わります")
             }
             .font(.subheadline)
             Button("設定アプリを開く") {

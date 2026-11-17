@@ -551,7 +551,7 @@ final class KeyboardViewController: UIInputViewController {
             label.textAlignment = .center
             label.font = .systemFont(ofSize: 14)
             label.textColor = .secondaryLabel
-            label.text = "クリップボード履歴を使うには「フルアクセスを許可」が必要です。\n設定アプリ → 一般 → キーボード → キーボード → RinhaBoard → フルアクセスを許可"
+            label.text = "クリップボード履歴を使うには「フルアクセスを許可」が必要です。\n設定アプリ → 一般 → キーボード → キーボード → Sparkle Key → フルアクセスを許可"
             contentStack.addArrangedSubview(label)
             let bottom = bottomRow(firstLabel: "ABC", firstAction: .showLetters)
             bottom.heightAnchor.constraint(equalToConstant: 52).isActive = true
