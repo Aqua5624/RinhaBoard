@@ -78,7 +78,7 @@ private final class AzooKeyEngine {
             sharedContainerURL: dir,
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
-            metadata: .init(versionString: "Sparkle Key 0.3.0")
+            metadata: .init(versionString: "Sparkle Key 0.3.1")
         )
     }
 
