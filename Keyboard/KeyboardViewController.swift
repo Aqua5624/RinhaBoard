@@ -726,7 +726,9 @@ final class KeyboardViewController: UIInputViewController {
             b.backgroundColor = isSpecial ? specialKeyColor() : normalKeyColor()
         }
         b.normalBg = b.backgroundColor
-        if case .returnKey = spec.action || spec.pill {
+        let isReturnKey: Bool
+        if case .returnKey = spec.action { isReturnKey = true } else { isReturnKey = false }
+        if isReturnKey || spec.pill {
             b.pressedBg = pressedPillKeyColor()
         } else {
             b.pressedBg = isSpecial ? pressedSpecialKeyColor() : pressedKeyColor()
