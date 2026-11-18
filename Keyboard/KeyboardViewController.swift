@@ -25,6 +25,8 @@ enum KeyAction {
     case emojiCategory(Int)
     case englishSuggest(String)
     case oneHandedToggle
+    case expandCandidates
+    case candidateListClose
     case toggleClipboard
     case saveClipboardNow
     case clearClips
@@ -118,7 +120,7 @@ final class FlickButton: KBButton {
 }
 
 enum KBMode {
-    case letters, numbers, symbols, clipboard, emoji, cursor
+    case letters, numbers, symbols, clipboard, emoji, cursor, candidateList
 }
 
 enum InputLang {
@@ -171,6 +173,8 @@ final class KeyboardViewController: UIInputViewController {
     private weak var returnKeyButton: KBButton?
     private var emojiTabIsRecent = true
     private var emojiCategoryIndex = 0
+    private let stripExpandButton = KBButton(type: .system)
+    private var contextSnapshotAtMark: String?
     private var emojiScrollView: UIScrollView?
     private var emojiSectionAnchors: [UIView] = []
     private var emojiHasRecentSection = false
@@ -283,6 +287,14 @@ final class KeyboardViewController: UIInputViewController {
             root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
         ])
 
+        // 候補一覧ボタン（変換中だけ候補バーの右端に出す）
+        stripExpandButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        stripExpandButton.tintColor = .secondaryLabel
+        stripExpandButton.action = .expandCandidates
+        stripExpandButton.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+        stripExpandButton.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        stripExpandButton.isHidden = true
+
         // 変換候補バー（かな入力中だけ出す）
         stripScroll.showsHorizontalScrollIndicator = false
         stripStack.axis = .horizontal
@@ -359,7 +371,13 @@ final class KeyboardViewController: UIInputViewController {
 
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
+        checkExternalCommit()
         updateAutoShift()
+    }
+
+    override func selectionDidChange(_ textInput: UITextInput?) {
+        super.selectionDidChange(textInput)
+        checkExternalCommit()
     }
 
     /// 英語モード：文頭と「. 」等の直後では自動で Shift を入れる（標準キーボード風）
@@ -441,9 +459,13 @@ final class KeyboardViewController: UIInputViewController {
             title: nil,
             action: .oneHandedToggle))
 
-        // クリップボードボタンの隣が変換候補の表示場所
-        toolbar.addArrangedSubview(stripScroll)
+        // クリップボードボタンの隣が変換候補の表示場所（右端に一覧ボタン）
+        let stripBox = UIStackView(arrangedSubviews: [stripScroll, stripExpandButton])
+        stripBox.axis = .horizontal
+        stripBox.spacing = 2
+        toolbar.addArrangedSubview(stripBox)
         stripScroll.isHidden = (mode != .letters) && !flickActive
+        stripExpandButton.isHidden = !(hasComposing && !currentCandidates.isEmpty)
 
         if mode == .numbers {
             toolbar.addArrangedSubview(toolButton(
@@ -505,6 +527,8 @@ final class KeyboardViewController: UIInputViewController {
             base = 312
         case .cursor:
             base = 312
+        case .candidateList:
+            base = 312
         }
         // 候補バーはツールバーの中に入ったので、高さはモードの基本値だけ。
         // 設定の高さ倍率を掛ける。同じ値の再代入でもレイアウトが走るので、
@@ -550,6 +574,11 @@ final class KeyboardViewController: UIInputViewController {
             let disp = displayComposing()
             textDocumentProxy.setMarkedText(
                 disp, selectedRange: NSRange(location: disp.count, length: 0))
+            if !markedTextShown {
+                // マーク開始時点の「カーソル前テキスト」を覚える。
+                // マーク中はこの値は変わらないはず（マーク文字列は含まれない）
+                contextSnapshotAtMark = textDocumentProxy.documentContextBeforeInput
+            }
             markedTextShown = true
         } else if markedTextShown {
             // unmarkText() 単体だと表示中のマーク文字列がそのまま「確定」されて
@@ -558,7 +587,27 @@ final class KeyboardViewController: UIInputViewController {
             textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
             textDocumentProxy.unmarkText()
             markedTextShown = false
+            contextSnapshotAtMark = nil
         }
+    }
+
+    /// ホスト側でマーク中テキストが確定・編集されたら、バッファを捨てて同期する。
+    /// 入力欄タップ等でホストが勝手に確定すると、こちらのバッファだけが残り、
+    /// 次の確定でもう一度同じ語が入ってしまう（二重入力）のを防ぐ。
+    /// ここでは絶対にテキストを挿入しない（見るだけ）ので再帰しない。
+    private func checkExternalCommit() {
+        guard hasComposing, markedTextShown,
+              let snapshot = contextSnapshotAtMark else { return }
+        let ctx = textDocumentProxy.documentContextBeforeInput ?? ""
+        if ctx == snapshot { return }
+        composingKana = ""
+        pendingRomaji = ""
+        currentCandidates = []
+        candidatesFor = ""
+        markedTextShown = false
+        contextSnapshotAtMark = nil
+        lastStripSignature = nil
+        refreshCandidates()
     }
 
     /// マーク付きテキストを消してから確定文字列を挿入する
@@ -612,6 +661,7 @@ final class KeyboardViewController: UIInputViewController {
     private func updateToolbarIconVisibility() {
         let stripActive = hasComposing || !englishSuggestions.isEmpty
         for b in toolbarButtons { b.isHidden = stripActive }
+        stripExpandButton.isHidden = !(hasComposing && !currentCandidates.isEmpty)
     }
 
     private func applyStrip() {
@@ -751,6 +801,14 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// 入力中をかなのまま全部確定する
+    /// 候補一覧を開いているときだけ、文字盤へ戻る
+    private func leaveCandidateList() {
+        if mode == .candidateList {
+            mode = .letters
+            rebuildAll()
+        }
+    }
+
     /// 自動変換の設定に従って入力中を全部確定する。
     /// 句読点やモード切替などの「ついで確定」は必ずこちらを通す
     /// （commitConvertedAll を直接呼ぶと自動変換 OFF でも変換されてしまう）。
@@ -796,7 +854,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func rebuildContent() {
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        contentStack.distribution = (mode == .clipboard || mode == .emoji || mode == .cursor) ? .fill : .fillEqually
+        contentStack.distribution = (mode == .clipboard || mode == .emoji || mode == .cursor || mode == .candidateList) ? .fill : .fillEqually
         switch mode {
         case .letters:
             if flickActive { buildFlickPad() } else { buildLetters() }
@@ -809,6 +867,7 @@ final class KeyboardViewController: UIInputViewController {
         case .clipboard: buildClipboard()
         case .emoji: buildEmoji()
         case .cursor: buildCursor()
+        case .candidateList: buildCandidateList()
         }
     }
 
@@ -1453,6 +1512,62 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: カーソル移動・テキスト編集パネル
 
+    /// 変換候補の一覧（▼から開く。全候補をグリッドで見せる）
+    private func buildCandidateList() {
+        let header = makeRow([
+            Spec("▲ 閉じる", .candidateListClose, small: true),
+            Spec("✓確定", .commitComposing, small: true),
+            Spec("✕ クリア", .clearComposing, small: true),
+        ])
+        header.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        contentStack.addArrangedSubview(header)
+
+        let scroll = UIScrollView()
+        scroll.showsVerticalScrollIndicator = false
+        let grid = UIStackView()
+        grid.axis = .vertical
+        grid.spacing = 2
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            grid.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            grid.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            grid.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            grid.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+        ])
+        let cols = 3
+        for start in stride(from: 0, to: currentCandidates.count, by: cols) {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = 2
+            row.heightAnchor.constraint(equalToConstant: 44).isActive = true
+            for j in 0..<cols {
+                if start + j < currentCandidates.count {
+                    let cand = currentCandidates[start + j]
+                    let b = KBButton(type: .system)
+                    b.setTitle(cand.text, for: .normal)
+                    b.setTitleColor(.label, for: .normal)
+                    b.titleLabel?.font = .systemFont(ofSize: 15)
+                    b.titleLabel?.lineBreakMode = .byTruncatingTail
+                    b.backgroundColor = normalKeyColor()
+                    b.normalBg = normalKeyColor()
+                    b.pressedBg = pressedKeyColor()
+                    b.layer.cornerRadius = 8
+                    b.action = .candidate(start + j)
+                    b.candidateValue = cand
+                    b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+                    row.addArrangedSubview(b)
+                } else {
+                    row.addArrangedSubview(UIView())
+                }
+            }
+            grid.addArrangedSubview(row)
+        }
+        contentStack.addArrangedSubview(scroll)
+    }
+
     private func buildCursor() {
         let moveRow = makeRow([
             Spec("←", .cursorMove(-1)),
@@ -1689,6 +1804,7 @@ final class KeyboardViewController: UIInputViewController {
             target, reading: String(composingKana.prefix(target.consumed)), weight: 3)
         composingKana = String(composingKana.dropFirst(target.consumed))
         refreshCandidates()
+        leaveCandidateList()
     }
 
     private func handle(_ action: KeyAction) {
@@ -1806,6 +1922,14 @@ final class KeyboardViewController: UIInputViewController {
             englishWord = ""
             englishSuggestions = []
             applyStrip()
+        case .expandCandidates:
+            if hasComposing {
+                mode = .candidateList
+                rebuildAll()
+            }
+        case .candidateListClose:
+            mode = .letters
+            rebuildAll()
         case .oneHandedToggle:
             SharedStore.oneHandedMode = (SharedStore.oneHandedMode + 1) % 3
             applyOneHanded()
@@ -1844,6 +1968,7 @@ final class KeyboardViewController: UIInputViewController {
         case .commitComposing:
             if SharedStore.autoConvertEnabled { commitConvertedAll() }
             else { commitRawAll() }
+            leaveCandidateList()
         case .clearComposing:
             // マーク付きテキストごと消す（unmark だけだと文字が残ってしまう）
             textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
@@ -1852,6 +1977,7 @@ final class KeyboardViewController: UIInputViewController {
             composingKana = ""
             pendingRomaji = ""
             refreshCandidates()
+            leaveCandidateList()
         }
         tapFeedback()
     }
