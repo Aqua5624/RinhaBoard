@@ -27,6 +27,15 @@ enum KeyAction {
 
 final class KBButton: UIButton {
     var action: KeyAction?
+    /// 押している間の背景色（標準キーボードのような押下フィードバック用）
+    var normalBg: UIColor?
+    var pressedBg: UIColor?
+    override var isHighlighted: Bool {
+        didSet {
+            guard let normalBg = normalBg, let pressedBg = pressedBg else { return }
+            backgroundColor = isHighlighted ? pressedBg : normalBg
+        }
+    }
 }
 
 enum KBMode {
@@ -46,7 +55,7 @@ enum ShiftState {
 final class KeyboardViewController: UIInputViewController {
 
     private var mode: KBMode = .letters
-    private var lang: InputLang = .en
+    private var lang: InputLang = SharedStore.inputLangIsKana ? .kana : .en
     private var shiftState: ShiftState = .off
     /// かなモードで変換確定前のローマ字の残り（例 "sh"）
     private var pendingRomaji: String = ""
@@ -65,6 +74,8 @@ final class KeyboardViewController: UIInputViewController {
     private var heightConstraint: NSLayoutConstraint?
 
     private var backspaceTimer: Timer?
+    private let feedback = UIImpactFeedbackGenerator(style: .light)
+    private var lastStripSignature: String?
 
     // MARK: ライフサイクル
 
@@ -123,6 +134,13 @@ final class KeyboardViewController: UIInputViewController {
         contentStack.spacing = 6
         contentStack.distribution = .fillEqually
         root.addArrangedSubview(contentStack)
+
+        feedback.prepare()
+        // 変換エンジンの初期化（辞書読み込み）を表示直後に済ませ、
+        // 最初のかな入力で固まらないようにする
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            KanjiConverter.warmUp()
+        }
 
         let h = view.heightAnchor.constraint(equalToConstant: 264)
         h.priority = UILayoutPriority(999)
@@ -223,9 +241,12 @@ final class KeyboardViewController: UIInputViewController {
         case .clipboard:
             base = 312
         }
-        let strip: CGFloat = currentCandidates.isEmpty ? 0 : 42
+        // かな入力中は候補が空でもバー分の高さを常時確保する。
+        // 候補の出入りでキーボードが伸縮するとキーの位置がずれて打ちにくいため。
+        let stripReserved = (lang == .kana && mode == .letters)
+        let strip: CGFloat = stripReserved ? 42 : 0
         heightConstraint?.constant = base + strip
-        stripHeightConstraint?.constant = currentCandidates.isEmpty ? 0 : 36
+        stripHeightConstraint?.constant = stripReserved ? 36 : 0
     }
 
     // MARK: 変換候補バー
@@ -251,7 +272,16 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             currentCandidates = []
         }
-        rebuildStrip()
+        // 候補列が前回と同じなら再構築しない（打鍵ごとのレイアウト暴れ防止）
+        let signature = eff + "\u{1}" + currentCandidates.map { $0.text }.joined(separator: "\u{2}")
+        if signature != lastStripSignature {
+            let wasEmpty = (lastStripSignature == nil) || lastStripSignature!.hasPrefix("\u{1}")
+            lastStripSignature = signature
+            rebuildStrip()
+            if wasEmpty && !eff.isEmpty {
+                stripScroll.setContentOffset(.zero, animated: false)
+            }
+        }
         updateHeight()
         updateToolbarLabel()
     }
@@ -297,7 +327,6 @@ final class KeyboardViewController: UIInputViewController {
         clear.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
         stripStack.addArrangedSubview(clear)
 
-        stripScroll.setContentOffset(.zero, animated: false)
     }
 
     /// 候補を1つ確定する：文書へ挿入し、消費した分だけ入力中から引く。
@@ -412,6 +441,8 @@ final class KeyboardViewController: UIInputViewController {
         else {
             b.backgroundColor = isSpecial ? specialKeyColor() : normalKeyColor()
         }
+        b.normalBg = b.backgroundColor
+        b.pressedBg = isSpecial ? pressedSpecialKeyColor() : pressedKeyColor()
         b.layer.cornerRadius = 6
         b.layer.shadowColor = UIColor.black.cgColor
         b.layer.shadowOpacity = 0.25
@@ -438,6 +469,22 @@ final class KeyboardViewController: UIInputViewController {
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.32, green: 0.32, blue: 0.34, alpha: 1)
                 : .white
+        }
+    }
+
+    private func pressedKeyColor() -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.22, green: 0.22, blue: 0.24, alpha: 1)
+                : UIColor(red: 0.72, green: 0.75, blue: 0.80, alpha: 1)
+        }
+    }
+
+    private func pressedSpecialKeyColor() -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.30, green: 0.30, blue: 0.33, alpha: 1)
+                : UIColor(red: 0.55, green: 0.58, blue: 0.64, alpha: 1)
         }
     }
 
@@ -678,6 +725,7 @@ final class KeyboardViewController: UIInputViewController {
         case .langToggle:
             if hasComposing { commitConvertedAll() }
             lang = lang == .en ? .kana : .en
+            SharedStore.inputLangIsKana = (lang == .kana)
             rebuildAll()
         case .showLetters:
             if hasComposing { commitConvertedAll() }
@@ -806,6 +854,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func tapFeedback() {
         guard hasFullAccess else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        feedback.impactOccurred()
+        feedback.prepare()
     }
 }

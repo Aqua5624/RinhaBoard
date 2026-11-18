@@ -95,6 +95,7 @@ enum SharedStore {
     private static let keyAutoCapture = "rb_autoCaptureClipboard"
     private static let keyShowNumberRow = "rb_showNumberRow"
     private static let keyLastChangeCount = "rb_lastPasteboardChangeCount"
+    private static let keyInputLangKana = "rb_inputLangKana"
 
     // MARK: - 設定
 
@@ -122,6 +123,16 @@ enum SharedStore {
     static var showNumberRow: Bool {
         get { defaults.bool(forKey: keyShowNumberRow) }
         set { defaults.set(newValue, forKey: keyShowNumberRow) }
+    }
+
+    /// 入力言語（かな ⇄ EN）。キーボード拡張は iOS に再起動されることがあるため、
+    /// 拡張のメモリではなく共有領域に保存して復元する。デフォルトはかな入力。
+    static var inputLangIsKana: Bool {
+        get {
+            if defaults.object(forKey: keyInputLangKana) == nil { return true }
+            return defaults.bool(forKey: keyInputLangKana)
+        }
+        set { defaults.set(newValue, forKey: keyInputLangKana) }
     }
 
     static var lastPasteboardChangeCount: Int {

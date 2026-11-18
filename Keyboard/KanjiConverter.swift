@@ -26,6 +26,11 @@ enum KanjiConverter {
         engine.candidates(for: composing)
     }
 
+    /// 初回変換の重さ（辞書読み込み等）をキーボード表示直後に済ませておく
+    static func warmUp() {
+        _ = engine.candidates(for: "あい")
+    }
+
     /// 候補が選択・確定されたことをエンジン（学習）に伝える
     static func notifySelected(_ candidate: ConversionCandidate) {
         engine.notifySelected(candidate)
@@ -78,7 +83,7 @@ private final class AzooKeyEngine {
             sharedContainerURL: dir,
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
-            metadata: .init(versionString: "Sparkle Key 0.3.1")
+            metadata: .init(versionString: "Sparkle Key 0.3.2")
         )
     }
 
