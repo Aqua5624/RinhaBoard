@@ -16,6 +16,7 @@ enum KeyAction {
     case numberStyleToggle     // 数字モード：QWERTY数字 ⇄ テンキー
     case toggleCursor
     case cursorMove(Int)
+    case autoConvertToggle
     case copyText
     case cutText
     case pasteText
@@ -1468,6 +1469,15 @@ final class KeyboardViewController: UIInputViewController {
         editRow.heightAnchor.constraint(equalToConstant: 52).isActive = true
         contentStack.addArrangedSubview(editRow)
 
+        // 自動変換の状態表示と切り替え（キーボード側から見た今の設定。
+        // 本体アプリの設定と食い違う場合は、ここで切り替えれば確実に効く）
+        let settingRow = makeRow([
+            Spec(SharedStore.autoConvertEnabled ? "自動変換 ON" : "自動変換 OFF",
+                 .autoConvertToggle, small: true),
+        ])
+        settingRow.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        contentStack.addArrangedSubview(settingRow)
+
         let bottom = bottomRow(firstLabel: "ABC", firstAction: .showLetters)
         bottom.heightAnchor.constraint(equalToConstant: 48).isActive = true
         contentStack.addArrangedSubview(bottom)
@@ -1753,6 +1763,9 @@ final class KeyboardViewController: UIInputViewController {
             SharedStore.numberStyle =
                 SharedStore.numberStyle == .qwerty ? .tenkey : .qwerty
             rebuildAll()
+        case .autoConvertToggle:
+            SharedStore.autoConvertEnabled = !SharedStore.autoConvertEnabled
+            rebuildContent()
         case .toggleCursor:
             mode = (mode == .cursor) ? .letters : .cursor
             rebuildAll()
