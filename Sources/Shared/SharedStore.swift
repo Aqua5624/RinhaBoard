@@ -298,20 +298,24 @@ enum SharedStore {
         }
     }
 
-    /// 変換が確定したときに呼ぶ。同じ読み→表記の組は回数を増やす（上限500件）。
-    static func recordLearned(reading: String, word: String) {
+    /// 変換が確定したときに呼ぶ。同じ読み→表記の組は回数を増やす（上限2000件）。
+    /// weight は信号の強さ：候補を自分で選んだときは大きく、
+    /// 全確定でそのまま通したときは小さくする（直す意思を優先するため）。
+    static func recordLearned(reading: String, word: String, weight: Int = 1) {
         guard !reading.isEmpty, !word.isEmpty else { return }
         var items = loadLearnedWords()
         if let i = items.firstIndex(where: { $0.reading == reading && $0.word == word }) {
-            items[i].count += 1
+            items[i].count += weight
             items[i].lastUsed = Date()
         } else {
-            items.append(LearnedWord(reading: reading, word: word))
+            var w = LearnedWord(reading: reading, word: word)
+            w.count = weight
+            items.append(w)
         }
         items.sort {
             $0.count != $1.count ? $0.count > $1.count : $0.lastUsed > $1.lastUsed
         }
-        if items.count > 500 { items = Array(items.prefix(500)) }
+        if items.count > 2000 { items = Array(items.prefix(2000)) }
         saveLearnedWords(items)
     }
 

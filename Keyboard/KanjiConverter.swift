@@ -36,10 +36,17 @@ enum KanjiConverter {
     }
 
     /// 候補が選択・確定されたことを学習に伝える（reading は消費した読み）
-    static func notifySelected(_ candidate: ConversionCandidate, reading: String) {
+    static func notifySelected(_ candidate: ConversionCandidate, reading: String, weight: Int = 1) {
         lock.lock()
         defer { lock.unlock() }
-        engine.notifySelected(candidate, reading: reading)
+        engine.notifySelected(candidate, reading: reading, weight: weight)
+    }
+
+    /// 文全体の変換結果を学習する（よく打つフレーズを丸ごと候補化する）
+    static func recordPhrase(reading: String, text: String) {
+        guard reading.count >= 2, !text.isEmpty, text != reading,
+              text != reading.katakanaConverted() else { return }
+        SharedStore.recordLearned(reading: reading, word: text, weight: 1)
     }
 
     /// ユーザー辞書が変わったときに呼び直す
@@ -257,7 +264,7 @@ private final class AzooKeyEngine {
         return Array(result.prefix(24))
     }
 
-    func notifySelected(_ candidate: ConversionCandidate, reading: String) {
+    func notifySelected(_ candidate: ConversionCandidate, reading: String, weight: Int = 1) {
         // エンジン側の学習（文脈込みの順位付けに効く）
         if let azoo = candidate.azooCandidate {
             converter.setCompletedData(azoo)
@@ -268,7 +275,7 @@ private final class AzooKeyEngine {
         guard !candidate.isUserDict,
               candidate.text != reading,
               candidate.text != reading.katakanaConverted() else { return }
-        SharedStore.recordLearned(reading: reading, word: candidate.text)
+        SharedStore.recordLearned(reading: reading, word: candidate.text, weight: weight)
     }
 
     /// ComposingCount から入力文字数の合計を取り出す

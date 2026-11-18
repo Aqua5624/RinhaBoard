@@ -631,7 +631,7 @@ final class KeyboardViewController: UIInputViewController {
         insertCommitted(cand.text)
         // 学習へ通知（消費した読みとセットで）
         KanjiConverter.notifySelected(
-            cand, reading: String(composingKana.prefix(cand.consumed)))
+            cand, reading: String(composingKana.prefix(cand.consumed)), weight: 3)
         composingKana = String(composingKana.dropFirst(cand.consumed))
         refreshCandidates()
     }
@@ -639,6 +639,8 @@ final class KeyboardViewController: UIInputViewController {
     /// 入力中を「先頭候補で変換しながら」全部確定する
     private func commitConvertedAll() {
         materializeComposing()
+        let fullReading = composingKana
+        var fullOutput = ""
         var guardCount = 0
         var firstPass = true
         while !composingKana.isEmpty && guardCount < 64 {
@@ -653,11 +655,16 @@ final class KeyboardViewController: UIInputViewController {
             firstPass = false
             guard let first = cands.first, first.consumed > 0 else { break }
             insertCommitted(first.text)
+            fullOutput += first.text
             KanjiConverter.notifySelected(
                 first, reading: String(composingKana.prefix(first.consumed)))
             let before = composingKana
             composingKana = String(composingKana.dropFirst(first.consumed))
             if composingKana == before { break }
+        }
+        // 文全体をフレーズとして学習（次回は丸ごと候補に出す）
+        if composingKana.isEmpty, !fullReading.isEmpty {
+            KanjiConverter.recordPhrase(reading: fullReading, text: fullOutput)
         }
         currentCandidates = []
         candidatesFor = ""
@@ -1481,7 +1488,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         insertCommitted(target.text)
         KanjiConverter.notifySelected(
-            target, reading: String(composingKana.prefix(target.consumed)))
+            target, reading: String(composingKana.prefix(target.consumed)), weight: 3)
         composingKana = String(composingKana.dropFirst(target.consumed))
         refreshCandidates()
     }
