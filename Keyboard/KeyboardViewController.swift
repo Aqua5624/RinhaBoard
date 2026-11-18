@@ -89,14 +89,36 @@ final class KeyboardViewController: UIInputViewController {
     /// 自動で Shift を入れたかどうか（手動 Shift と区別する）
     private var autoShiftArmed = false
 
+    // キー押下プレビュー（Gboard 風ポップアップ）
+    private let popupView = UIView()
+    private let popupLabel = UILabel()
+
+    @objc private func showKeyPopup(_ sender: KBButton) {
+        guard let text = sender.title(for: .normal), !text.isEmpty else { return }
+        popupLabel.text = text
+        let frame = sender.convert(sender.bounds, to: view)
+        let w = max(frame.width + 16, 46)
+        let h: CGFloat = 54
+        var x = frame.midX - w / 2
+        x = min(max(x, 2), view.bounds.width - w - 2)
+        let y = max(frame.minY - h - 2, 0)
+        popupView.frame = CGRect(x: x, y: y, width: w, height: h)
+        popupView.isHidden = false
+        view.bringSubviewToFront(popupView)
+    }
+
+    @objc private func hideKeyPopup() {
+        popupView.isHidden = true
+    }
+
     // MARK: ライフサイクル
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
-                : UIColor(red: 0.82, green: 0.84, blue: 0.87, alpha: 1)
+                ? UIColor(red: 0.075, green: 0.075, blue: 0.078, alpha: 1)
+                : UIColor(red: 0.925, green: 0.933, blue: 0.945, alpha: 1)
         }
 
         let root = UIStackView()
@@ -147,6 +169,29 @@ final class KeyboardViewController: UIInputViewController {
         contentStack.distribution = .fillEqually
         root.addArrangedSubview(contentStack)
 
+        // 押下プレビューの見た目
+        popupView.backgroundColor = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.23, green: 0.23, blue: 0.25, alpha: 1)
+                : .white
+        }
+        popupView.layer.cornerRadius = 8
+        popupView.layer.shadowColor = UIColor.black.cgColor
+        popupView.layer.shadowOpacity = 0.3
+        popupView.layer.shadowRadius = 4
+        popupView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        popupView.isUserInteractionEnabled = false
+        popupView.isHidden = true
+        popupLabel.font = .systemFont(ofSize: 28)
+        popupLabel.textAlignment = .center
+        popupLabel.translatesAutoresizingMaskIntoConstraints = false
+        popupView.addSubview(popupLabel)
+        NSLayoutConstraint.activate([
+            popupLabel.centerXAnchor.constraint(equalTo: popupView.centerXAnchor),
+            popupLabel.centerYAnchor.constraint(equalTo: popupView.centerYAnchor),
+        ])
+        view.addSubview(popupView)
+
         feedback.prepare()
         // 変換エンジンの初期化（辞書読み込み）を表示直後に済ませ、
         // 最初のかな入力で固まらないようにする
@@ -154,7 +199,7 @@ final class KeyboardViewController: UIInputViewController {
             KanjiConverter.warmUp()
         }
 
-        let h = view.heightAnchor.constraint(equalToConstant: 264)
+        let h = view.heightAnchor.constraint(equalToConstant: 276)
         h.priority = UILayoutPriority(999)
         h.isActive = true
         heightConstraint = h
@@ -373,9 +418,11 @@ final class KeyboardViewController: UIInputViewController {
             let b = KBButton(type: .system)
             b.setTitle(cand.text, for: .normal)
             b.setTitleColor(.label, for: .normal)
-            b.titleLabel?.font = .systemFont(ofSize: 16)
-            b.backgroundColor = normalKeyColor()
-            b.layer.cornerRadius = 6
+            b.titleLabel?.font = .systemFont(ofSize: 15)
+            b.backgroundColor = .clear
+            b.normalBg = .clear
+            b.pressedBg = pressedKeyColor()
+            b.layer.cornerRadius = 8
             b.contentEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
             b.action = .candidate(i)
             b.candidateValue = cand
@@ -385,7 +432,7 @@ final class KeyboardViewController: UIInputViewController {
 
         let commit = KBButton(type: .system)
         commit.setTitle("✓確定", for: .normal)
-        commit.setTitleColor(.systemBlue, for: .normal)
+        commit.setTitleColor(accentKeyColor(), for: .normal)
         commit.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
         commit.contentEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
         commit.action = .commitComposing
@@ -523,19 +570,31 @@ final class KeyboardViewController: UIInputViewController {
         default:
             isSpecial = true
         }
-        if case .space = spec.action { b.backgroundColor = normalKeyColor() }
-        else {
+        if case .returnKey = spec.action {
+            b.backgroundColor = accentKeyColor()
+            b.setTitleColor(accentTitleColor(), for: .normal)
+            b.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        } else if case .space = spec.action {
+            b.backgroundColor = normalKeyColor()
+            b.setTitleColor(.secondaryLabel, for: .normal)
+            b.titleLabel?.font = .systemFont(ofSize: 13)
+        } else {
             b.backgroundColor = isSpecial ? specialKeyColor() : normalKeyColor()
         }
         b.normalBg = b.backgroundColor
-        b.pressedBg = isSpecial ? pressedSpecialKeyColor() : pressedKeyColor()
-        b.layer.cornerRadius = 6
-        b.layer.shadowColor = UIColor.black.cgColor
-        b.layer.shadowOpacity = 0.25
-        b.layer.shadowRadius = 0
-        b.layer.shadowOffset = CGSize(width: 0, height: 1)
+        if case .returnKey = spec.action {
+            b.pressedBg = pressedAccentKeyColor()
+        } else {
+            b.pressedBg = isSpecial ? pressedSpecialKeyColor() : pressedKeyColor()
+        }
+        b.layer.cornerRadius = 10
         b.action = spec.action
 
+        if case .text = spec.action, spec.label.count == 1 {
+            // Gboard 風: 押した文字をキーの上に大きくプレビューする
+            b.addTarget(self, action: #selector(showKeyPopup(_:)), for: .touchDown)
+            b.addTarget(self, action: #selector(hideKeyPopup), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        }
         if case .globe = spec.action {
             // 地球儀：タップで次のキーボード、長押しで一覧（iOS標準の仕組み）
             b.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
@@ -579,10 +638,11 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    // Gboard（Material You）風パレット: 白キー＋薄グレーの盤面、特殊キーは一段濃いグレー
     private func normalKeyColor() -> UIColor {
         UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.32, green: 0.32, blue: 0.34, alpha: 1)
+                ? UIColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1)
                 : .white
         }
     }
@@ -590,24 +650,49 @@ final class KeyboardViewController: UIInputViewController {
     private func pressedKeyColor() -> UIColor {
         UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.22, green: 0.22, blue: 0.24, alpha: 1)
-                : UIColor(red: 0.72, green: 0.75, blue: 0.80, alpha: 1)
+                ? UIColor(red: 0.23, green: 0.23, blue: 0.25, alpha: 1)
+                : UIColor(red: 0.875, green: 0.89, blue: 0.91, alpha: 1)
         }
     }
 
     private func pressedSpecialKeyColor() -> UIColor {
         UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.30, green: 0.30, blue: 0.33, alpha: 1)
-                : UIColor(red: 0.55, green: 0.58, blue: 0.64, alpha: 1)
+                ? UIColor(red: 0.16, green: 0.16, blue: 0.18, alpha: 1)
+                : UIColor(red: 0.72, green: 0.75, blue: 0.79, alpha: 1)
         }
     }
 
     private func specialKeyColor() -> UIColor {
         UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.18, green: 0.18, blue: 0.20, alpha: 1)
-                : UIColor(red: 0.66, green: 0.69, blue: 0.74, alpha: 1)
+                ? UIColor(red: 0.118, green: 0.118, blue: 0.125, alpha: 1)
+                : UIColor(red: 0.84, green: 0.855, blue: 0.878, alpha: 1)
+        }
+    }
+
+    /// 確定キー用のアクセント（Gboard の検索/確定キーと同じ青）
+    private func accentKeyColor() -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.54, green: 0.71, blue: 0.97, alpha: 1)
+                : UIColor(red: 0.043, green: 0.34, blue: 0.82, alpha: 1)
+        }
+    }
+
+    private func pressedAccentKeyColor() -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.45, green: 0.63, blue: 0.92, alpha: 1)
+                : UIColor(red: 0.03, green: 0.27, blue: 0.68, alpha: 1)
+        }
+    }
+
+    private func accentTitleColor() -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.06, green: 0.14, blue: 0.30, alpha: 1)
+                : .white
         }
     }
 
@@ -622,7 +707,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         specs += [
             Spec(lang == .kana ? "、" : ",", .text(","), weight: 0.7),
-            Spec(" ", .space, weight: includeLang ? 3.0 : 3.6),
+            Spec(lang == .kana ? "日本語" : "English", .space, weight: includeLang ? 3.0 : 3.6, small: true),
             Spec(lang == .kana ? "。" : ".", .text("."), weight: 0.7),
             Spec(returnLabel(), .returnKey, weight: 1.6, small: true),
         ]
@@ -669,7 +754,7 @@ final class KeyboardViewController: UIInputViewController {
         third += "zxcvbnm".map { Spec(upper ? String($0).uppercased() : String($0), .text(String($0))) }
         third.append(Spec("", .backspace, weight: 1.4, symbol: "delete.left"))
         contentStack.addArrangedSubview(makeRow(third))
-        contentStack.addArrangedSubview(bottomRow(firstLabel: "123", firstAction: .showNumbers, includeLang: true))
+        contentStack.addArrangedSubview(bottomRow(firstLabel: "?123", firstAction: .showNumbers, includeLang: true))
     }
 
     private func buildNumbersQwerty() {
