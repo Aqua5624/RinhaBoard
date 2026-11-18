@@ -490,7 +490,11 @@ final class KeyboardViewController: UIInputViewController {
     /// 変換エンジンに渡す文字列は effectiveComposing()（flush 済み）を使う。
     private func displayComposing() -> String {
         let r = RomajiKana.process(pendingRomaji, flush: false)
-        return composingKana + r.committed + r.pending
+        // "nn" は「ん」でほぼ確定なので表示も ん にする（この後ろに母音が
+        // 来たら ん＋な行として処理される）。単独の "n" は な行か ん か
+        // 未定なのでローマ字のまま見せる。
+        let tail = (r.pending == "nn") ? "ん" : r.pending
+        return composingKana + r.committed + tail
     }
 
     /// 入力中テキストを入力欄にマーク付きテキスト（下線表示）として反映する。
@@ -1460,15 +1464,25 @@ final class KeyboardViewController: UIInputViewController {
     /// 候補バーに表示されていた候補そのものを確定する
     private func commitCandidateValue(_ cand: ConversionCandidate) {
         materializeComposing()
-        guard cand.consumed > 0, cand.consumed <= composingKana.count else {
-            // 表示の後に入力が進んでいて消費数が合わない場合は取り直す
-            commitCandidate(at: 0)
-            return
+        var target = cand
+        if !(cand.consumed > 0 && cand.consumed <= composingKana.count) {
+            // 表示の後に入力が変わっていて消費数が合わない。別の候補を勝手に
+            // 確定はせず、取り直した候補の中に同じ表記があればそれを使う。
+            let fresh = KanjiConverter.candidates(for: composingKana)
+            currentCandidates = fresh
+            candidatesFor = composingKana
+            guard let found = fresh.first(where: {
+                $0.text == cand.text && $0.consumed > 0 && $0.consumed <= composingKana.count
+            }) else {
+                applyStrip()
+                return
+            }
+            target = found
         }
-        insertCommitted(cand.text)
+        insertCommitted(target.text)
         KanjiConverter.notifySelected(
-            cand, reading: String(composingKana.prefix(cand.consumed)))
-        composingKana = String(composingKana.dropFirst(cand.consumed))
+            target, reading: String(composingKana.prefix(target.consumed)))
+        composingKana = String(composingKana.dropFirst(target.consumed))
         refreshCandidates()
     }
 
