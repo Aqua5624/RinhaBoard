@@ -1,0 +1,32 @@
+name: Zenzai model check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download models
+        run: |
+          mkdir -p /tmp/models
+          curl -fL -o /tmp/models/v3-small.gguf https://huggingface.co/Miwa-Keita/zenz-v3-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf
+          curl -fL -o /tmp/models/v31-xsmall.gguf https://huggingface.co/Miwa-Keita/zenz-v3.1-xsmall-gguf/resolve/main/ggml-model-Q5_K_M.gguf
+          curl -fL -o /tmp/models/v32-xsmall.gguf https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf/resolve/main/ggml-model-Q5_K_M.gguf
+          ls -lh /tmp/models/
+
+      - name: Build checker
+        run: |
+          cd zenz-check
+          swift build -c release 2>&1 | tail -3
+          cp .build/release/zenzcheck /tmp/zenzcheck
+
+      - name: Run per model (separate processes)
+        run: |
+          for m in v3-small v31-xsmall v32-xsmall; do
+            echo "===== $m ====="
+            /tmp/zenzcheck /tmp/models/$m.gguf 2>&1 | tail -6
+            echo "exit: ${PIPESTATUS[0]}"
+          done
