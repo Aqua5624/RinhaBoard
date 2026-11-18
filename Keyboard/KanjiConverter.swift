@@ -96,7 +96,7 @@ private final class AzooKeyEngine {
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
             zenzaiMode: useZenzai ? zenzaiMode() : .off,
-            metadata: .init(versionString: "Sparkle Key 0.4.3")
+            metadata: .init(versionString: "Sparkle Key 0.4.4")
         )
         if useZenzai { cachedZenzaiOptions = options } else { cachedOptions = options }
         return options
@@ -112,7 +112,7 @@ private final class AzooKeyEngine {
         guard FileManager.default.fileExists(atPath: weight.path) else {
             return .off
         }
-        return .on(weight: weight, inferenceLimit: 2, personalizationMode: nil,
+        return .on(weight: weight, inferenceLimit: 1, personalizationMode: nil,
                    versionDependentMode: .v3(.init()))
     }
 
