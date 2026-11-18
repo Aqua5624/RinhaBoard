@@ -169,7 +169,13 @@ final class KeyboardViewController: UIInputViewController {
 
     /// テンキー（フリックパッド）が表示中か
     private var flickActive: Bool {
-        mode == .numbers && SharedStore.numberStyle == .tenkey
+        mode == .numbers && SharedStore.numberStyle == .flick
+    }
+
+    /// 変換中のかなを入力欄・候補バーに表示すべき状態か
+    /// （ローマ字入力中か、フリック入力中）
+    private var composingActive: Bool {
+        (lang == .kana && mode == .letters) || flickActive
     }
 
     private func flickPreview(_ button: KBButton, text: String?) {
@@ -411,7 +417,8 @@ final class KeyboardViewController: UIInputViewController {
         if mode == .numbers {
             toolbar.addArrangedSubview(toolButton(
                 symbol: nil,
-                title: SharedStore.numberStyle == .qwerty ? "テンキー" : "123列",
+                title: SharedStore.numberStyle == .qwerty ? "テンキー"
+                    : (SharedStore.numberStyle == .tenkey ? "フリック" : "123列"),
                 action: .numberStyleToggle))
         }
 
@@ -442,7 +449,7 @@ final class KeyboardViewController: UIInputViewController {
         case .letters:
             base = SharedStore.showNumberRow ? 318 : 276
         case .numbers:
-            base = SharedStore.numberStyle == .tenkey ? 332 : 276
+            base = SharedStore.numberStyle == .qwerty ? 276 : 332
         case .symbols:
             base = 276
         case .clipboard:
@@ -479,7 +486,7 @@ final class KeyboardViewController: UIInputViewController {
     /// 入力中のかなを入力欄にマーク付きテキスト（下線表示）として反映する。
     /// これが無いと、確定するまで入力欄に何も出なくて不安になる。
     private func updateMarkedText() {
-        if lang == .kana && mode == .letters && hasComposing {
+        if composingActive && hasComposing {
             let eff = effectiveComposing()
             textDocumentProxy.setMarkedText(
                 eff, selectedRange: NSRange(location: eff.count, length: 0))
@@ -507,7 +514,7 @@ final class KeyboardViewController: UIInputViewController {
         updateHeight()
         updateReturnKeyLabel()
         updateToolbarLabel()
-        guard lang == .kana && mode == .letters && !eff.isEmpty else {
+        guard composingActive && !eff.isEmpty else {
             if !currentCandidates.isEmpty {
                 currentCandidates = []
                 candidatesFor = ""
@@ -519,6 +526,9 @@ final class KeyboardViewController: UIInputViewController {
         let gen = candidateGeneration
         candidateQueue.async { [weak self] in
             guard let self = self else { return }
+            // 打鍵のたびにキューが積まれるので、開始時点で古くなっている
+            // リクエストは推論を回さず捨てる（レスポンス改善）
+            guard gen == self.candidateGeneration else { return }
             let cands = KanjiConverter.candidates(for: eff)
             DispatchQueue.main.async {
                 guard gen == self.candidateGeneration,
@@ -587,10 +597,15 @@ final class KeyboardViewController: UIInputViewController {
     /// 表示中の候補列（currentCandidates）をそのまま使う（表示と確定の不一致を避ける）。
     private func commitCandidate(at index: Int) {
         materializeComposing()
-        // 非同期取得がまだ追いついていない場合は、その場で同期取得する
+        // 非同期取得がまだ追いついていない場合: 表示中の候補が今の入力の
+        // 前方一致（入力が伸びただけ）ならそのまま使う。そうでない時だけ
+        // その場で同期取得する（メインスレッドのブロックを避ける）
         if candidatesFor != composingKana {
-            currentCandidates = KanjiConverter.candidates(for: composingKana)
-            candidatesFor = composingKana
+            let reusable = !candidatesFor.isEmpty && composingKana.hasPrefix(candidatesFor)
+            if !reusable {
+                currentCandidates = KanjiConverter.candidates(for: composingKana)
+                candidatesFor = composingKana
+            }
         }
         let ordered = currentCandidates
         guard ordered.indices.contains(index) else { return }
@@ -607,9 +622,17 @@ final class KeyboardViewController: UIInputViewController {
     private func commitConvertedAll() {
         materializeComposing()
         var guardCount = 0
+        var firstPass = true
         while !composingKana.isEmpty && guardCount < 64 {
             guardCount += 1
-            let cands = KanjiConverter.candidates(for: composingKana)
+            // 最初の文節は、表示中だった候補列をそのまま使う（再推論しない）
+            let cands: [ConversionCandidate]
+            if firstPass && candidatesFor == composingKana && !currentCandidates.isEmpty {
+                cands = currentCandidates
+            } else {
+                cands = KanjiConverter.candidates(for: composingKana)
+            }
+            firstPass = false
             guard let first = cands.first, first.consumed > 0 else { break }
             insertCommitted(first.text)
             KanjiConverter.notifySelected(
@@ -665,7 +688,11 @@ final class KeyboardViewController: UIInputViewController {
         switch mode {
         case .letters: buildLetters()
         case .numbers:
-            if SharedStore.numberStyle == .tenkey { buildTenkey() } else { buildNumbersQwerty() }
+            switch SharedStore.numberStyle {
+            case .qwerty: buildNumbersQwerty()
+            case .tenkey: buildTenkey()
+            case .flick: buildFlickPad()
+            }
         case .symbols: buildSymbols()
         case .clipboard: buildClipboard()
         case .emoji: buildEmoji()
@@ -1000,8 +1027,59 @@ final class KeyboardViewController: UIInputViewController {
         return b
     }
 
-    /// テンキー = フリック入力パッド（Gboard の12キー配列、Aqua のスクショ準拠）
+    /// 数字テンキー（2枚目のスクショのレール配置で、中身は数字）
     private func buildTenkey() {
+        let pad = UIStackView()
+        pad.axis = .horizontal
+        pad.spacing = 6
+        pad.distribution = .fill
+
+        // 左レール: ◀ / 絵文字 / 記号 / ABC
+        let left = UIStackView()
+        left.axis = .vertical
+        left.spacing = 6
+        left.distribution = .fillEqually
+        left.addArrangedSubview(makeKey(Spec("", .cursorMove(-1), symbol: "chevron.left")))
+        left.addArrangedSubview(makeKey(Spec("", .toggleEmoji, symbol: "face.smiling")))
+        left.addArrangedSubview(makeKey(Spec("#+=", .showSymbols, small: true)))
+        left.addArrangedSubview(makeKey(Spec("ABC", .showLetters, small: true)))
+
+        // 中央: 数字 3列×4行
+        let center = UIStackView()
+        center.axis = .vertical
+        center.spacing = 6
+        center.distribution = .fillEqually
+        for rowChars in ["123", "456", "789"] {
+            center.addArrangedSubview(makeRow(rowChars.map { Spec(String($0), .text(String($0))) }))
+        }
+        center.addArrangedSubview(makeRow([
+            Spec(",", .text(",")),
+            Spec("0", .text("0")),
+            Spec(".", .text(".")),
+        ]))
+
+        // 右レール: ⌫ / ▶ / スペース / 確定
+        let right = UIStackView()
+        right.axis = .vertical
+        right.spacing = 6
+        right.distribution = .fillEqually
+        right.addArrangedSubview(makeKey(Spec("", .backspace, symbol: "delete.left")))
+        right.addArrangedSubview(makeKey(Spec("", .cursorMove(1), symbol: "chevron.right")))
+        right.addArrangedSubview(makeKey(Spec("␣", .space)))
+        let returnButton = makeKey(Spec(returnLabel(), .returnKey, small: true))
+        returnKeyButton = returnButton
+        right.addArrangedSubview(returnButton)
+
+        pad.addArrangedSubview(left)
+        pad.addArrangedSubview(center)
+        pad.addArrangedSubview(right)
+        left.widthAnchor.constraint(equalTo: pad.widthAnchor, multiplier: 0.17).isActive = true
+        right.widthAnchor.constraint(equalTo: pad.widthAnchor, multiplier: 0.17).isActive = true
+        contentStack.addArrangedSubview(pad)
+    }
+
+    /// フリック入力パッド（Gboard の12キー配列、Aqua のスクショ準拠）
+    private func buildFlickPad() {
         let pad = UIStackView()
         pad.axis = .horizontal
         pad.spacing = 6
@@ -1449,7 +1527,9 @@ final class KeyboardViewController: UIInputViewController {
             mode = .symbols
             rebuildAll()
         case .numberStyleToggle:
-            SharedStore.numberStyle = SharedStore.numberStyle == .qwerty ? .tenkey : .qwerty
+            let all = NumberStyle.allCases
+            let idx = all.firstIndex(of: SharedStore.numberStyle) ?? 0
+            SharedStore.numberStyle = all[(idx + 1) % all.count]
             rebuildAll()
         case .toggleCursor:
             mode = (mode == .cursor) ? .letters : .cursor
@@ -1531,7 +1611,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func deleteBackwardSmart() {
-        if lang == .kana && (mode == .letters || flickActive) && hasComposing {
+        if composingActive && hasComposing {
             if !pendingRomaji.isEmpty {
                 pendingRomaji.removeLast()
             } else {

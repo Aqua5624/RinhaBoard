@@ -78,12 +78,14 @@ extension String {
 /// 数字モードの並び方（「123」を押したときのレイアウト）
 enum NumberStyle: String, CaseIterable, Identifiable {
     case qwerty   // 数字・記号をQWERTY風の横並びで出す
-    case tenkey   // テンキー（電話パッド風 3×4）で出す
+    case tenkey   // 数字テンキー（レール付きパッド）で出す
+    case flick    // フリック入力パッド（12キー）で出す
     var id: String { rawValue }
     var label: String {
         switch self {
         case .qwerty: return "QWERTY数字"
         case .tenkey: return "テンキー"
+        case .flick: return "フリック"
         }
     }
 }

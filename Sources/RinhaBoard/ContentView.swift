@@ -197,7 +197,7 @@ struct ContentView: View {
                 iconChip("123.rectangle", Color(red: 0.85, green: 0.45, blue: 0.1))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("「123」の並び")
-                    Text("テンキーはフリック入力パッドになります")
+                    Text("テンキーは数字パッド、フリックは12キー入力です")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -207,7 +207,7 @@ struct ContentView: View {
                     Button {
                         numberStyle = style
                     } label: {
-                        Text(style == .tenkey ? "テンキー（フリック）" : style.label)
+                        Text(style.label)
                             .font(.subheadline.weight(.medium))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
@@ -463,7 +463,7 @@ struct ContentView: View {
             noteLine("地球儀キーはタップで次のキーボード、長押しでキーボード一覧が出ます（iOS標準の動き）。")
             noteLine("パスワード入力欄などでは、iOSの仕様で自動的に標準キーボードに切り替わります。")
             noteLine("かな漢字変換は azooKey の変換エンジン＋Zenzai です。スペースで先頭候補を確定、候補タップで選択、変換中は確定キーで文全体を変換して確定します。")
-            noteLine("フリック入力は「123 → テンキー」で使えます。数字は各キーの長押し、濁点・小文字は句読点キーの下フリックです。")
+            noteLine("フリック入力は「123」の並びで「フリック」を選ぶと使えます。数字は各キーの長押し、濁点・小文字は句読点キーの下フリックです。")
         }
         .font(.subheadline)
     }
