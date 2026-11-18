@@ -76,6 +76,18 @@ extension String {
 }
 
 /// 数字モードの並び方（「123」を押したときのレイアウト）
+/// かな入力の方式（QWERTYローマ字 / フリック）
+enum KanaStyle: String, CaseIterable, Identifiable {
+    case qwerty, flick
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .qwerty: return "QWERTY"
+        case .flick: return "フリック"
+        }
+    }
+}
+
 enum NumberStyle: String, CaseIterable, Identifiable {
     case qwerty   // 数字・記号をQWERTY風の横並びで出す
     case tenkey   // 数字テンキー（レール付きパッド）で出す
@@ -115,6 +127,19 @@ enum SharedStore {
     private static let keyRecentEmoji = "rb_recentEmoji_v1"
 
     // MARK: - 設定
+
+    private static let keyKanaStyle = "rb_kanaStyle_v1"
+    /// かな入力の方式。未設定なら旧「123の並び」がフリックだった場合に引き継ぐ
+    static var kanaStyle: KanaStyle {
+        get {
+            if let raw = defaults.string(forKey: keyKanaStyle),
+               let style = KanaStyle(rawValue: raw) {
+                return style
+            }
+            return numberStyle == .flick ? .flick : .qwerty
+        }
+        set { defaults.set(newValue.rawValue, forKey: keyKanaStyle) }
+    }
 
     static var numberStyle: NumberStyle {
         get {

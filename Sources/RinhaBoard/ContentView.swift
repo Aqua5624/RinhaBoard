@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// キーボードと同じ Material You 風デザイン: 水色グレーの地に白カード、青アクセント
 struct ContentView: View {
     @State private var numberStyle: NumberStyle = SharedStore.numberStyle
+    @State private var kanaStyle: KanaStyle = SharedStore.kanaStyle
     @State private var autoCapture: Bool = SharedStore.autoCaptureClipboard
     @State private var showNumberRow: Bool = SharedStore.showNumberRow
     @State private var zenzaiEnabled: Bool = SharedStore.zenzaiEnabled
@@ -73,7 +74,8 @@ struct ContentView: View {
                 VStack(spacing: 18) {
                     headerCard
                     setupCard
-                    keyboardCard
+                    appearanceCard
+                    inputCard
                     userDictCard
                     dataCard
                     clipboardCard
@@ -211,10 +213,10 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - キーボード設定
+    // MARK: - 見た目
 
-    private var keyboardCard: some View {
-        card(title: "キーボード設定") {
+    private var appearanceCard: some View {
+        card(title: "見た目") {
             HStack(spacing: 12) {
                 iconChip("paintpalette.fill", accent)
                 VStack(alignment: .leading, spacing: 2) {
@@ -245,7 +247,9 @@ struct ContentView: View {
                 }
                 Spacer()
             }
+
             Divider()
+
             HStack(spacing: 12) {
                 iconChip("arrow.up.and.down", Color(red: 0.35, green: 0.5, blue: 0.9))
                 VStack(alignment: .leading, spacing: 2) {
@@ -260,7 +264,9 @@ struct ContentView: View {
                 .onChange(of: heightScale) { _, newValue in
                     SharedStore.keyboardHeightScale = newValue
                 }
+
             Divider()
+
             HStack(spacing: 12) {
                 iconChip("sidebar.right", Color(red: 0.5, green: 0.4, blue: 0.85))
                 VStack(alignment: .leading, spacing: 2) {
@@ -291,18 +297,57 @@ struct ContentView: View {
             .onChange(of: oneHanded) { _, newValue in
                 SharedStore.oneHandedMode = newValue
             }
-            Divider()
+        }
+    }
+
+    // MARK: - 入力
+
+    private var inputCard: some View {
+        card(title: "入力") {
             HStack(spacing: 12) {
-                iconChip("123.rectangle", Color(red: 0.85, green: 0.45, blue: 0.1))
+                iconChip("keyboard", Color(red: 0.1, green: 0.55, blue: 0.35))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("「123」の並び")
-                    Text("テンキーは数字パッド、フリックは12キー入力です")
+                    Text("かな入力")
+                    Text("ローマ字のQWERTYか、フリック入力かを選びます")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                 }
             }
             HStack(spacing: 4) {
-                ForEach(NumberStyle.allCases) { style in
+                ForEach(KanaStyle.allCases) { style in
+                    Button {
+                        kanaStyle = style
+                    } label: {
+                        Text(style.label)
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(kanaStyle == style ? cardColor : Color.clear)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(4)
+            .background(fieldColor)
+            .clipShape(Capsule())
+            .onChange(of: kanaStyle) { _, newValue in
+                SharedStore.kanaStyle = newValue
+            }
+
+            Divider()
+
+            HStack(spacing: 12) {
+                iconChip("123.rectangle", Color(red: 0.85, green: 0.45, blue: 0.1))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("「123」の並び")
+                    Text("「123」を押したときの数字の出し方です")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+            }
+            HStack(spacing: 4) {
+                ForEach([NumberStyle.qwerty, .tenkey]) { style in
                     Button {
                         numberStyle = style
                     } label: {
@@ -323,7 +368,9 @@ struct ContentView: View {
                 SharedStore.numberStyle = newValue
             }
 
+
             Divider()
+
             toggleRow(icon: "sparkles", tint: Color(red: 0.55, green: 0.36, blue: 0.96),
                       title: "AI変換（Zenzai）を使う",
                       subtitle: "ニューラル変換で文脈に合った候補を出します",
@@ -331,7 +378,9 @@ struct ContentView: View {
                 .onChange(of: zenzaiEnabled) { _, newValue in
                     SharedStore.zenzaiEnabled = newValue
                 }
+
             Divider()
+
             toggleRow(icon: "text.badge.checkmark", tint: Color(red: 0.1, green: 0.55, blue: 0.35),
                       title: "自動変換",
                       subtitle: "確定キーで入力中の残りをまとめて変換します。OFFだとかなのまま確定",
@@ -339,7 +388,9 @@ struct ContentView: View {
                 .onChange(of: autoConvert) { _, newValue in
                     SharedStore.autoConvertEnabled = newValue
                 }
+
             Divider()
+
             toggleRow(icon: "rectangle.topthird.inset.filled", tint: Color(red: 0.1, green: 0.45, blue: 0.85),
                       title: "数字行を常に表示",
                       subtitle: "英字キーボードの上に数字の行を追加します",
@@ -347,7 +398,9 @@ struct ContentView: View {
                 .onChange(of: showNumberRow) { _, newValue in
                     SharedStore.showNumberRow = newValue
                 }
+
             Divider()
+
             toggleRow(icon: "doc.on.clipboard", tint: Color(red: 0.85, green: 0.55, blue: 0.1),
                       title: "クリップボードを自動で保存",
                       subtitle: "キーボードを開くたびに今のクリップボードを履歴へ",
@@ -355,7 +408,13 @@ struct ContentView: View {
                 .onChange(of: autoCapture) { _, newValue in
                     SharedStore.autoCaptureClipboard = newValue
                 }
-            Divider()
+        }
+    }
+
+    // MARK: - ユーザー辞書
+
+    private var userDictCard: some View {
+        card(title: "辞書と学習（\(userDict.count)件）") {
             HStack(spacing: 12) {
                 iconChip("brain", Color(red: 0.8, green: 0.3, blue: 0.5))
                 VStack(alignment: .leading, spacing: 2) {
@@ -378,13 +437,7 @@ struct ContentView: View {
                     .foregroundColor(.red)
                 }
             }
-        }
-    }
-
-    // MARK: - ユーザー辞書
-
-    private var userDictCard: some View {
-        card(title: "ユーザー辞書（\(userDict.count)件）") {
+            Divider()
             Text("登録した単語は変換候補の先頭に出ます。読みはひらがなで入力してください（カタカナでも自動でひらがなになります）。")
                 .font(.footnote)
                 .foregroundColor(.secondary)
@@ -628,7 +681,7 @@ struct ContentView: View {
             noteLine("地球儀キーはタップで次のキーボード、長押しでキーボード一覧が出ます（iOS標準の動き）。")
             noteLine("パスワード入力欄などでは、iOSの仕様で自動的に標準キーボードに切り替わります。")
             noteLine("かな漢字変換は azooKey の変換エンジン＋Zenzai です。スペースで先頭候補を確定、候補タップで選択、変換中は確定キーで文全体を変換して確定します。")
-            noteLine("フリック入力は「123」の並びで「フリック」を選ぶと使えます。数字は各キーの長押し、濁点・小文字は句読点キーの下フリックです。")
+            noteLine("フリック入力は「入力」設定の「かな入力」で選べます。数字は各キーの長押し、濁点・小文字は句読点キーの下フリックです。")
         }
         .font(.subheadline)
     }
@@ -643,6 +696,10 @@ struct ContentView: View {
     }
 
     private func reload() {
+        kanaStyle = SharedStore.kanaStyle
+        if SharedStore.numberStyle == .flick {
+            SharedStore.numberStyle = .tenkey
+        }
         accentIndex = SharedStore.accentIndex
         heightScale = SharedStore.keyboardHeightScale
         oneHanded = SharedStore.oneHandedMode

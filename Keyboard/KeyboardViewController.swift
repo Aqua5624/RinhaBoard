@@ -191,9 +191,9 @@ final class KeyboardViewController: UIInputViewController {
     private var twemojiCols: Int = 20
     private var twemojiCache: [String: UIImage] = [:]
 
-    /// テンキー（フリックパッド）が表示中か
+    /// フリック入力パッドが表示中か（かな入力方式がフリックで、かな文字盤のとき）
     private var flickActive: Bool {
-        mode == .numbers && SharedStore.numberStyle == .flick
+        mode == .letters && lang == .kana && SharedStore.kanaStyle == .flick
     }
 
     /// 変換中のかなを入力欄・候補バーに表示すべき状態か
@@ -447,8 +447,7 @@ final class KeyboardViewController: UIInputViewController {
         if mode == .numbers {
             toolbar.addArrangedSubview(toolButton(
                 symbol: nil,
-                title: SharedStore.numberStyle == .qwerty ? "テンキー"
-                    : (SharedStore.numberStyle == .tenkey ? "フリック" : "123列"),
+                title: SharedStore.numberStyle == .qwerty ? "テンキー" : "123列",
                 action: .numberStyleToggle))
         }
 
@@ -494,7 +493,7 @@ final class KeyboardViewController: UIInputViewController {
         let base: CGFloat
         switch mode {
         case .letters:
-            base = SharedStore.showNumberRow ? 318 : 276
+            base = flickActive ? 332 : (SharedStore.showNumberRow ? 318 : 276)
         case .numbers:
             base = SharedStore.numberStyle == .qwerty ? 276 : 332
         case .symbols:
@@ -751,6 +750,14 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// 入力中をかなのまま全部確定する
+    /// 自動変換の設定に従って入力中を全部確定する。
+    /// 句読点やモード切替などの「ついで確定」は必ずこちらを通す
+    /// （commitConvertedAll を直接呼ぶと自動変換 OFF でも変換されてしまう）。
+    private func commitAllAutoAware() {
+        if SharedStore.autoConvertEnabled { commitConvertedAll() }
+        else { commitRawAll() }
+    }
+
     private func commitRawAll() {
         materializeComposing()
         if !composingKana.isEmpty {
@@ -790,12 +797,12 @@ final class KeyboardViewController: UIInputViewController {
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         contentStack.distribution = (mode == .clipboard || mode == .emoji || mode == .cursor) ? .fill : .fillEqually
         switch mode {
-        case .letters: buildLetters()
+        case .letters:
+            if flickActive { buildFlickPad() } else { buildLetters() }
         case .numbers:
             switch SharedStore.numberStyle {
             case .qwerty: buildNumbersQwerty()
-            case .tenkey: buildTenkey()
-            case .flick: buildFlickPad()
+            case .tenkey, .flick: buildTenkey()
             }
         case .symbols: buildSymbols()
         case .clipboard: buildClipboard()
@@ -1225,15 +1232,23 @@ final class KeyboardViewController: UIInputViewController {
         pad.spacing = 6
         pad.distribution = .fill
 
-        // 左レール: 取消 / ◀ / 絵文字・記号 / QWERTY へ
+        // 左レール: 文字盤では 123 / ◀ / 記号 / 英字切替、
+        // 数字盤では 取消 / ◀ / 記号 / 文字盤へ
         let left = UIStackView()
         left.axis = .vertical
         left.spacing = 6
         left.distribution = .fillEqually
-        left.addArrangedSubview(makeKey(Spec("", .clearComposing, symbol: "arrow.uturn.backward")))
-        left.addArrangedSubview(makeKey(Spec("", .cursorMove(-1), symbol: "chevron.left")))
-        left.addArrangedSubview(makeKey(Spec("☺記", .showSymbols, small: true)))
-        left.addArrangedSubview(makeKey(Spec("あa1", .showLetters, small: true)))
+        if mode == .letters {
+            left.addArrangedSubview(makeKey(Spec("123", .showNumbers, small: true)))
+            left.addArrangedSubview(makeKey(Spec("", .cursorMove(-1), symbol: "chevron.left")))
+            left.addArrangedSubview(makeKey(Spec("☺記", .showSymbols, small: true)))
+            left.addArrangedSubview(makeKey(Spec("aあ", .langToggle, small: true)))
+        } else {
+            left.addArrangedSubview(makeKey(Spec("", .clearComposing, symbol: "arrow.uturn.backward")))
+            left.addArrangedSubview(makeKey(Spec("", .cursorMove(-1), symbol: "chevron.left")))
+            left.addArrangedSubview(makeKey(Spec("☺記", .showSymbols, small: true)))
+            left.addArrangedSubview(makeKey(Spec("あa1", .showLetters, small: true)))
+        }
 
         // 中央: 3列×4行のフリックキー（値は [中央, 左, 上, 右, 下]）
         let center = UIStackView()
@@ -1304,7 +1319,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         switch value {
         case "、", "。", "？", "！":
-            if hasComposing { commitConvertedAll() }
+            if hasComposing { commitAllAutoAware() }
             textDocumentProxy.insertText(value)
         case "゛":
             applyDakutenTransform()
@@ -1718,26 +1733,25 @@ final class KeyboardViewController: UIInputViewController {
         case .globe:
             advanceToNextInputMode()
         case .langToggle:
-            if hasComposing { commitConvertedAll() }
+            if hasComposing { commitAllAutoAware() }
             lang = lang == .en ? .kana : .en
             SharedStore.inputLangIsKana = (lang == .kana)
             rebuildAll()
         case .showLetters:
-            if hasComposing { commitConvertedAll() }
+            if hasComposing { commitAllAutoAware() }
             mode = .letters
             rebuildAll()
         case .showNumbers:
-            if hasComposing { commitConvertedAll() }
+            if hasComposing { commitAllAutoAware() }
             mode = .numbers
             rebuildAll()
         case .showSymbols:
-            if hasComposing { commitConvertedAll() }
+            if hasComposing { commitAllAutoAware() }
             mode = .symbols
             rebuildAll()
         case .numberStyleToggle:
-            let all = NumberStyle.allCases
-            let idx = all.firstIndex(of: SharedStore.numberStyle) ?? 0
-            SharedStore.numberStyle = all[(idx + 1) % all.count]
+            SharedStore.numberStyle =
+                SharedStore.numberStyle == .qwerty ? .tenkey : .qwerty
             rebuildAll()
         case .toggleCursor:
             mode = (mode == .cursor) ? .letters : .cursor
@@ -1787,7 +1801,7 @@ final class KeyboardViewController: UIInputViewController {
             if mode == .clipboard {
                 mode = .letters
             } else {
-                if hasComposing { commitConvertedAll() }
+                if hasComposing { commitAllAutoAware() }
                 captureClipboardIfNeeded()
                 mode = .clipboard
             }
@@ -1802,7 +1816,7 @@ final class KeyboardViewController: UIInputViewController {
             SharedStore.clearUnpinnedClipItems()
             rebuildAll()
         case .insertClip(let text):
-            if hasComposing { commitConvertedAll() }
+            if hasComposing { commitAllAutoAware() }
             textDocumentProxy.insertText(text)
             mode = .letters
             rebuildAll()
@@ -1857,12 +1871,12 @@ final class KeyboardViewController: UIInputViewController {
                 return
             }
             if raw == "," {
-                commitConvertedAll()
+                commitAllAutoAware()
                 textDocumentProxy.insertText("、")
                 return
             }
             if raw == "." {
-                commitConvertedAll()
+                commitAllAutoAware()
                 textDocumentProxy.insertText("。")
                 return
             }
