@@ -96,7 +96,7 @@ private final class AzooKeyEngine {
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
             zenzaiMode: useZenzai ? zenzaiMode() : .off,
-            metadata: .init(versionString: "Sparkle Key 0.6.2")
+            metadata: .init(versionString: "Sparkle Key 0.6.3")
         )
         if useZenzai { cachedZenzaiOptions = options } else { cachedOptions = options }
         return options
@@ -212,6 +212,11 @@ private final class AzooKeyEngine {
         }
         result += dictFull
 
+        // 原文（かな）・カタカナのままの候補は、変換候補がある限り後ろに回す。
+        // エンジンが原文を先頭に返すことがあり、そのままだとスペースを
+        // 押しても「変わらない」ように見えるため。
+        var deferredRaw: [ConversionCandidate] = []
+        let kataOfComposing = composing.katakanaConverted()
         func appendAzoo(_ candidate: Candidate) {
             guard candidate.inputable else { return }
             let text = candidate.text
@@ -219,8 +224,13 @@ private final class AzooKeyEngine {
             seen.insert(text)
             let consumed = Self.inputCount(of: candidate.composingCount)
             guard consumed > 0 else { return }
-            result.append(ConversionCandidate(
-                text: text, consumed: min(consumed, composing.count), azooCandidate: candidate))
+            let conv = ConversionCandidate(
+                text: text, consumed: min(consumed, composing.count), azooCandidate: candidate)
+            if text == composing || text == kataOfComposing {
+                deferredRaw.append(conv)
+            } else {
+                result.append(conv)
+            }
         }
 
         // 文全体の変換（全候補）→ 最初の文節の候補、の順。
@@ -233,6 +243,8 @@ private final class AzooKeyEngine {
         for cand in results.firstClauseResults {
             appendAzoo(cand)
         }
+
+        result += deferredRaw
 
         // 受け皿：原文とカタカナ
         if !seen.contains(composing) {
