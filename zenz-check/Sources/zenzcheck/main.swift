@@ -45,6 +45,7 @@ let converter = KanaKanjiConverter.withDefaultDictionary()
 struct Cand { let text: String; let consumed: Int }
 
 /// アプリの AzooKeyEngine.candidates と同じ組み立て（辞書・学習マージなし）
+@MainActor
 func appCandidates(for composing: String) -> [Cand] {
     var ct = ComposingText()
     ct.insertAtCursorPosition(composing, inputStyle: .direct)
