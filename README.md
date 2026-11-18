@@ -1,6 +1,6 @@
 # Sparkle Key（旧 RinhaBoard）
 
-Gboard（Android版）風の自作 iOS キーボードアプリ。バージョン 0.4.2 / iOS 17+ / 未署名IPAを GitHub Actions でビルド。
+Gboard（Android版）風の自作 iOS キーボードアプリ。バージョン 0.4.3 / iOS 17+ / 未署名IPAを GitHub Actions でビルド。
 
 - 本体アプリ: `com.aqua5624.RinhaBoard`
 - キーボード拡張: `com.aqua5624.RinhaBoard.Keyboard`（アプリに同梱）

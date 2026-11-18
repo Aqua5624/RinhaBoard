@@ -53,6 +53,13 @@ jobs:
           ls "$APP/PlugIns"
           test -d "$APP/PlugIns/RinhaBoardKeyboard.appex"
           ls -lh "$APP/PlugIns/RinhaBoardKeyboard.appex/ggml-model-Q5_K_M.gguf"
+          APPEX_BIN="$APP/PlugIns/RinhaBoardKeyboard.appex/RinhaBoardKeyboard"
+          if nm "$APPEX_BIN" 2>/dev/null | grep -q "llama_model_load_from_file"; then
+            echo "Zenzai trait active: real llama symbols are referenced"
+          else
+            echo "ERROR: Zenzai trait NOT active (mock build) - refusing to ship"
+            exit 1
+          fi
 
       - name: Package IPA
         run: |
@@ -60,22 +67,22 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP" Payload/
-          zip -r SparkleKey-unsigned-v0.4.2.ipa Payload
-          ls -lh SparkleKey-unsigned-v0.4.2.ipa
+          zip -r SparkleKey-unsigned-v0.4.3.ipa Payload
+          ls -lh SparkleKey-unsigned-v0.4.3.ipa
 
       - name: Upload IPA artifact
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: SparkleKey-unsigned
-          path: SparkleKey-unsigned-v0.4.2.ipa
+          path: SparkleKey-unsigned-v0.4.3.ipa
           retention-days: 14
 
       - name: Publish IPA as release asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          IPA="SparkleKey-unsigned-v0.4.2.ipa"
+          IPA="SparkleKey-unsigned-v0.4.3.ipa"
           TAG="v$(echo "$IPA" | sed -E 's/.*-v([0-9]+\.[0-9]+\.[0-9]+)\.ipa/\1/')"
           echo "Publishing $IPA to release $TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then

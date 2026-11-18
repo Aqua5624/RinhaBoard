@@ -1,6 +1,5 @@
 import Foundation
-import KanaKanjiConverterModule
-import KanaKanjiConverterModuleWithDefaultDictionary
+import SparkleKeyCore  // @_exported 経由で KanaKanjiConverterModule 群が見える
 
 /// 変換候補（候補バー表示用）
 struct ConversionCandidate {
@@ -97,7 +96,7 @@ private final class AzooKeyEngine {
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
             zenzaiMode: useZenzai ? zenzaiMode() : .off,
-            metadata: .init(versionString: "Sparkle Key 0.4.2")
+            metadata: .init(versionString: "Sparkle Key 0.4.3")
         )
         if useZenzai { cachedZenzaiOptions = options } else { cachedOptions = options }
         return options
