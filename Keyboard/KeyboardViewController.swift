@@ -14,6 +14,9 @@ enum KeyAction {
     case showNumbers
     case showSymbols
     case numberStyleToggle     // 数字モード：QWERTY数字 ⇄ テンキー
+    case toggleEmoji
+    case emojiInsert(String)
+    case emojiCategory(Int)
     case toggleClipboard
     case saveClipboardNow
     case clearClips
@@ -41,7 +44,7 @@ final class KBButton: UIButton {
 }
 
 enum KBMode {
-    case letters, numbers, symbols, clipboard
+    case letters, numbers, symbols, clipboard, emoji
 }
 
 enum InputLang {
@@ -88,6 +91,19 @@ final class KeyboardViewController: UIInputViewController {
     private var suppressNextSpaceTap = false
     /// 自動で Shift を入れたかどうか（手動 Shift と区別する）
     private var autoShiftArmed = false
+    /// 確定キー（変換中はラベルが「確定」になる）
+    private weak var returnKeyButton: KBButton?
+    private var emojiTabIsRecent = true
+    private var emojiCategoryIndex = 0
+
+    /// 変換中は確定キーの表示を「確定」に変える（Gboard と同じ）
+    private func updateReturnKeyLabel() {
+        guard let b = returnKeyButton else { return }
+        let label = (lang == .kana && hasComposing) ? "確定" : returnLabel()
+        if b.title(for: .normal) != label {
+            b.setTitle(label, for: .normal)
+        }
+    }
 
     // キー押下プレビュー（Gboard 風ポップアップ）
     private let popupView = UIView()
@@ -276,6 +292,11 @@ final class KeyboardViewController: UIInputViewController {
             title: nil,
             action: .toggleClipboard))
 
+        toolbar.addArrangedSubview(toolButton(
+            symbol: mode == .emoji ? "keyboard" : "face.smiling",
+            title: nil,
+            action: .toggleEmoji))
+
         // クリップボードボタンの隣が変換候補の表示場所
         toolbar.addArrangedSubview(stripScroll)
         stripScroll.isHidden = (mode != .letters)
@@ -312,12 +333,14 @@ final class KeyboardViewController: UIInputViewController {
         let base: CGFloat
         switch mode {
         case .letters:
-            base = SharedStore.showNumberRow ? 304 : 262
+            base = SharedStore.showNumberRow ? 318 : 276
         case .numbers:
-            base = SharedStore.numberStyle == .tenkey ? 256 : 262
+            base = SharedStore.numberStyle == .tenkey ? 308 : 276
         case .symbols:
-            base = 262
+            base = 276
         case .clipboard:
+            base = 312
+        case .emoji:
             base = 312
         }
         // 候補バーはツールバーの中に入ったので、高さはモードの基本値だけ。
@@ -373,6 +396,7 @@ final class KeyboardViewController: UIInputViewController {
         // バックグラウンドで行い、届いたら差し替える（打鍵の反応を遅らせない）
         applyStrip()
         updateHeight()
+        updateReturnKeyLabel()
         updateToolbarLabel()
         guard lang == .kana && mode == .letters && !eff.isEmpty else {
             if !currentCandidates.isEmpty {
@@ -524,13 +548,14 @@ final class KeyboardViewController: UIInputViewController {
 
     private func rebuildContent() {
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        contentStack.distribution = (mode == .clipboard) ? .fill : .fillEqually
+        contentStack.distribution = (mode == .clipboard || mode == .emoji) ? .fill : .fillEqually
         switch mode {
         case .letters: buildLetters()
         case .numbers:
             if SharedStore.numberStyle == .tenkey { buildTenkey() } else { buildNumbersQwerty() }
         case .symbols: buildSymbols()
         case .clipboard: buildClipboard()
+        case .emoji: buildEmoji()
         }
     }
 
@@ -711,7 +736,9 @@ final class KeyboardViewController: UIInputViewController {
             Spec(lang == .kana ? "。" : ".", .text("."), weight: 0.7),
             Spec(returnLabel(), .returnKey, weight: 1.6, small: true),
         ]
-        return makeRow(specs)
+        let row = makeRow(specs)
+        returnKeyButton = row.arrangedSubviews.last as? KBButton
+        return row
     }
 
     private func returnLabel() -> String {
@@ -788,12 +815,14 @@ final class KeyboardViewController: UIInputViewController {
             Spec("0", .text("0")),
             Spec(".", .text(".")),
         ]))
-        contentStack.addArrangedSubview(makeRow([
+        let lastRow = makeRow([
             Spec("ABC", .showLetters, weight: 1.5, small: true),
             Spec("", .globe, weight: 1.0, symbol: "globe"),
-            Spec(" ", .space, weight: 3.6),
+            Spec(lang == .kana ? "日本語" : "English", .space, weight: 3.6, small: true),
             Spec(returnLabel(), .returnKey, weight: 1.6, small: true),
-        ]))
+        ])
+        returnKeyButton = lastRow.arrangedSubviews.last as? KBButton
+        contentStack.addArrangedSubview(lastRow)
     }
 
     private func buildSymbols() {
@@ -892,6 +921,101 @@ final class KeyboardViewController: UIInputViewController {
         contentStack.addArrangedSubview(bottom)
     }
 
+    // MARK: 絵文字パネル
+
+    private func currentEmojiItems() -> [String] {
+        if emojiTabIsRecent {
+            let recent = SharedStore.loadRecentEmoji()
+            if !recent.isEmpty { return recent }
+        }
+        return EmojiData.categories[emojiCategoryIndex].items
+    }
+
+    private func buildEmoji() {
+        // カテゴリタブ
+        let tabs = UIStackView()
+        tabs.axis = .horizontal
+        tabs.distribution = .fillEqually
+        tabs.spacing = 2
+        tabs.heightAnchor.constraint(equalToConstant: 36).isActive = true
+
+        func tabButton(symbol: String, fallback: String, selected: Bool, action: KeyAction) -> KBButton {
+            let b = KBButton(type: .system)
+            if let img = UIImage(systemName: symbol) {
+                b.setImage(img, for: .normal)
+                b.tintColor = selected ? .label : .secondaryLabel
+            } else {
+                b.setTitle(fallback, for: .normal)
+                b.titleLabel?.font = .systemFont(ofSize: 18)
+            }
+            if selected {
+                b.backgroundColor = normalKeyColor()
+                b.layer.cornerRadius = 8
+            }
+            b.action = action
+            b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+            return b
+        }
+
+        let hasRecent = !SharedStore.loadRecentEmoji().isEmpty
+        if hasRecent {
+            tabs.addArrangedSubview(tabButton(
+                symbol: "clock", fallback: "🕐",
+                selected: emojiTabIsRecent, action: .emojiCategory(-1)))
+        }
+        for (i, cat) in EmojiData.categories.enumerated() {
+            tabs.addArrangedSubview(tabButton(
+                symbol: cat.symbol, fallback: cat.fallback,
+                selected: !emojiTabIsRecent && emojiCategoryIndex == i,
+                action: .emojiCategory(i)))
+        }
+        contentStack.addArrangedSubview(tabs)
+
+        // グリッド（縦スクロール、8列）
+        let scroll = UIScrollView()
+        scroll.showsVerticalScrollIndicator = false
+        let grid = UIStackView()
+        grid.axis = .vertical
+        grid.spacing = 2
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            grid.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            grid.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            grid.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            grid.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+        ])
+        let items = currentEmojiItems()
+        let cols = 8
+        for start in stride(from: 0, to: items.count, by: cols) {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = 2
+            row.heightAnchor.constraint(equalToConstant: 44).isActive = true
+            for j in 0..<cols {
+                if start + j < items.count {
+                    let e = items[start + j]
+                    let b = KBButton(type: .system)
+                    b.setTitle(e, for: .normal)
+                    b.titleLabel?.font = .systemFont(ofSize: 28)
+                    b.action = .emojiInsert(e)
+                    b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+                    row.addArrangedSubview(b)
+                } else {
+                    row.addArrangedSubview(UIView())
+                }
+            }
+            grid.addArrangedSubview(row)
+        }
+        contentStack.addArrangedSubview(scroll)
+
+        let bottom = bottomRow(firstLabel: "ABC", firstAction: .showLetters)
+        bottom.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        contentStack.addArrangedSubview(bottom)
+    }
+
     // MARK: クリップボード取り込み
 
     private func captureClipboardIfNeeded() {
@@ -956,8 +1080,10 @@ final class KeyboardViewController: UIInputViewController {
                 return
             }
             if lang == .kana && mode == .letters && hasComposing {
-                // 変換：先頭候補を確定（残りは入力中のまま）
-                commitCandidate(at: 0)
+                // 変換：先頭候補を確定（残りは入力中のまま）。
+                // 自動変換 OFF のときはかなのまま全部確定する
+                if SharedStore.autoConvertEnabled { commitCandidate(at: 0) }
+                else { commitRawAll() }
             } else if lang == .en && mode == .letters,
                       let ctx = textDocumentProxy.documentContextBeforeInput,
                       ctx.hasSuffix(" "), !ctx.hasSuffix("  ") {
@@ -973,8 +1099,13 @@ final class KeyboardViewController: UIInputViewController {
                 textDocumentProxy.insertText(" ")
             }
         case .returnKey:
-            if lang == .kana && hasComposing { commitConvertedAll() }
-            textDocumentProxy.insertText("\n")
+            if lang == .kana && hasComposing {
+                // 変換中は「確定」: 確定するだけ（改行しない）
+                if SharedStore.autoConvertEnabled { commitConvertedAll() }
+                else { commitRawAll() }
+            } else {
+                textDocumentProxy.insertText("\n")
+            }
         case .globe:
             advanceToNextInputMode()
         case .langToggle:
@@ -997,6 +1128,21 @@ final class KeyboardViewController: UIInputViewController {
         case .numberStyleToggle:
             SharedStore.numberStyle = SharedStore.numberStyle == .qwerty ? .tenkey : .qwerty
             rebuildAll()
+        case .toggleEmoji:
+            mode = (mode == .emoji) ? .letters : .emoji
+            rebuildAll()
+        case .emojiInsert(let emoji):
+            if hasComposing { commitRawAll() }
+            textDocumentProxy.insertText(emoji)
+            SharedStore.addRecentEmoji(emoji)
+        case .emojiCategory(let index):
+            if index < 0 {
+                emojiTabIsRecent = true
+            } else {
+                emojiTabIsRecent = false
+                emojiCategoryIndex = index
+            }
+            rebuildContent()
         case .toggleClipboard:
             if mode == .clipboard {
                 mode = .letters
@@ -1029,7 +1175,8 @@ final class KeyboardViewController: UIInputViewController {
         case .candidate(let index):
             commitCandidate(at: index)
         case .commitComposing:
-            commitConvertedAll()
+            if SharedStore.autoConvertEnabled { commitConvertedAll() }
+            else { commitRawAll() }
         case .clearComposing:
             // マーク付きテキストごと消す（unmark だけだと文字が残ってしまう）
             textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))

@@ -96,7 +96,7 @@ private final class AzooKeyEngine {
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
             zenzaiMode: useZenzai ? zenzaiMode() : .off,
-            metadata: .init(versionString: "Sparkle Key 0.5.0")
+            metadata: .init(versionString: "Sparkle Key 0.5.1")
         )
         if useZenzai { cachedZenzaiOptions = options } else { cachedOptions = options }
         return options

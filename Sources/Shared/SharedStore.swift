@@ -109,6 +109,8 @@ enum SharedStore {
     private static let keyLastChangeCount = "rb_lastPasteboardChangeCount"
     private static let keyInputLangKana = "rb_inputLangKana"
     private static let keyZenzaiEnabled = "rb_zenzaiEnabled"
+    private static let keyAutoConvert = "rb_autoConvertEnabled"
+    private static let keyRecentEmoji = "rb_recentEmoji_v1"
 
     // MARK: - 設定
 
@@ -156,6 +158,36 @@ enum SharedStore {
             return defaults.bool(forKey: keyZenzaiEnabled)
         }
         set { defaults.set(newValue, forKey: keyZenzaiEnabled) }
+    }
+
+    /// 自動変換（確定キーで入力中の残りをまとめて変換するか）。
+    /// OFF のときは確定キーでかなのまま確定する。デフォルト ON。
+    static var autoConvertEnabled: Bool {
+        get {
+            if defaults.object(forKey: keyAutoConvert) == nil { return true }
+            return defaults.bool(forKey: keyAutoConvert)
+        }
+        set { defaults.set(newValue, forKey: keyAutoConvert) }
+    }
+
+    // MARK: - 最近使った絵文字
+
+    static func loadRecentEmoji() -> [String] {
+        guard let data = defaults.data(forKey: keyRecentEmoji),
+              let items = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return items
+    }
+
+    static func addRecentEmoji(_ emoji: String) {
+        var items = loadRecentEmoji()
+        items.removeAll { $0 == emoji }
+        items.insert(emoji, at: 0)
+        if items.count > 40 { items = Array(items.prefix(40)) }
+        if let data = try? JSONEncoder().encode(items) {
+            defaults.set(data, forKey: keyRecentEmoji)
+        }
     }
 
     static var lastPasteboardChangeCount: Int {

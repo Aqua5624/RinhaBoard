@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var autoCapture: Bool = SharedStore.autoCaptureClipboard
     @State private var showNumberRow: Bool = SharedStore.showNumberRow
     @State private var zenzaiEnabled: Bool = SharedStore.zenzaiEnabled
+    @State private var autoConvert: Bool = SharedStore.autoConvertEnabled
     @State private var clipItems: [ClipItem] = SharedStore.loadClipItems()
     @State private var newClipText: String = ""
     @State private var userDict: [UserDictEntry] = SharedStore.loadUserDict()
@@ -86,6 +87,10 @@ struct ContentView: View {
             Toggle("AI変換（Zenzai）を使う", isOn: $zenzaiEnabled)
                 .onChange(of: zenzaiEnabled) { _, newValue in
                     SharedStore.zenzaiEnabled = newValue
+                }
+            Toggle("自動変換（確定で残りをまとめて変換）", isOn: $autoConvert)
+                .onChange(of: autoConvert) { _, newValue in
+                    SharedStore.autoConvertEnabled = newValue
                 }
             Toggle("数字行を常に表示（英字の上）", isOn: $showNumberRow)
                 .onChange(of: showNumberRow) { _, newValue in
@@ -250,6 +255,7 @@ struct ContentView: View {
         autoCapture = SharedStore.autoCaptureClipboard
         showNumberRow = SharedStore.showNumberRow
         zenzaiEnabled = SharedStore.zenzaiEnabled
+        autoConvert = SharedStore.autoConvertEnabled
         clipItems = SharedStore.loadClipItems()
         userDict = SharedStore.loadUserDict()
         learnedCount = SharedStore.loadLearnedWords().count
