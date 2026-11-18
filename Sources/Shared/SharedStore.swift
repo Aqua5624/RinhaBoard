@@ -130,7 +130,9 @@ enum SharedStore {
             let xml = String(text[start.lowerBound...end.upperBound])
             guard let xmlData = xml.data(using: .utf8),
                   let obj = try? PropertyListSerialization.propertyList(
-                    from: xmlData, options: [], format: nil) as? [String: Any],
+                    from: xmlData,
+                    options: PropertyListSerialization.ReadOptions(),
+                    format: nil) as? [String: Any],
                   let entitlements = obj["Entitlements"] as? [String: Any],
                   let groups = entitlements[
                     "com.apple.security.application-groups"] as? [String],
