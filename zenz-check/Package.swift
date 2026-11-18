@@ -9,6 +9,6 @@ let package = Package(
     targets: [
         .executableTarget(name: "zenzcheck", dependencies: [
             .product(name: "KanaKanjiConverterModuleWithDefaultDictionary", package: "AzooKeyKanaKanjiConverter")
-        ])
+        ], swiftSettings: [.interoperabilityMode(.Cxx)])
     ]
 )
