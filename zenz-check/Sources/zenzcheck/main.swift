@@ -2,51 +2,47 @@ import Foundation
 import KanaKanjiConverterModule
 import KanaKanjiConverterModuleWithDefaultDictionary
 
-let args = CommandLine.arguments
-guard args.count >= 2 else {
-    FileHandle.standardError.write("usage: zenzcheck <model.gguf>\n".data(using: .utf8)!)
-    exit(2)
-}
-let weight = URL(fileURLWithPath: args[1])
+// Usage: zenzcheck <model.gguf>
+let modelPath = CommandLine.arguments[1]
+let dataDir = URL(fileURLWithPath: "/tmp/zenzcheck-data")
+try? FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
 
-func convert(_ kana: String, limit: Int, converter: KanaKanjiConverter) -> [String] {
-    var text = ComposingText()
-    text.insertAtCursorPosition(kana, inputStyle: .direct)
-    let options = ConvertRequestOptions(
+func makeOptions(limit: Int) -> ConvertRequestOptions {
+    ConvertRequestOptions(
+        N_best: 10,
         requireJapanesePrediction: .disabled,
         requireEnglishPrediction: .disabled,
         keyboardLanguage: .ja_JP,
-        typographyLetterCandidate: false,
         englishCandidateInRoman2KanaInput: true,
         fullWidthRomanCandidate: false,
         halfWidthKanaCandidate: false,
-        learningType: .nothing,
-        maxMemoryCount: 0,
+        learningType: .inputAndOutput,
+        maxMemoryCount: 65536,
         shouldResetMemory: false,
-        memoryDirectoryURL: URL(fileURLWithPath: NSTemporaryDirectory()),
-        sharedContainerURL: URL(fileURLWithPath: NSTemporaryDirectory()),
+        memoryDirectoryURL: dataDir,
+        sharedContainerURL: dataDir,
         textReplacer: .withDefaultEmojiDictionary(),
         specialCandidateProviders: nil,
-        zenzaiMode: .on(weight: weight, inferenceLimit: limit,
-                        personalizationMode: nil, versionDependentMode: .v3(.init())),
+        zenzaiMode: .on(weight: URL(fileURLWithPath: modelPath),
+                        inferenceLimit: limit, personalizationMode: nil,
+                        versionDependentMode: .v3(.init())),
         metadata: .init(versionString: "zenzcheck")
     )
-    return converter.requestCandidates(text, options: options)
-        .prefix(8).map { $0.text }
 }
 
-let converter = KanaKanjiConverter()
-let inputs = [
-    "となりのきゃくはよくかきくうきゃくだ",
-    "かきくうきゃくだ",
-    "かき",
-    "とうきょうとっきょきょかきょくきょくちょう",
-]
+let converter = KanaKanjiConverter.withDefaultDictionary()
+let inputs = ["となりのきゃくはよくかきくうきゃくだ",
+              "かきくうきゃくだ",
+              "かき",
+              "とうきょうとっきょきょかきょくきょくちょう"]
 for limit in [1, 2, 3] {
     print("----- inferenceLimit \(limit) -----")
+    let options = makeOptions(limit: limit)
     for input in inputs {
-        let top = convert(input, limit: limit, converter: converter)
-        print("[\(input)] -> \(top)")
+        var ct = ComposingText()
+        ct.insertAtCursorPosition(input, inputStyle: .direct)
+        let r = converter.requestCandidates(ct, options: options)
+        print("[\(input)] -> \(r.mainResults.prefix(8).map { $0.text })")
     }
 }
 print("DONE")
