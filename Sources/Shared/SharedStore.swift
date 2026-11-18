@@ -107,7 +107,38 @@ enum NumberStyle: String, CaseIterable, Identifiable {
 /// （LiveContainer 等でグループ権限が落ちる場合）では標準領域にフォールバックする。
 /// その場合でもキーボード単体での履歴保存・挿入はそのまま動く。
 enum SharedStore {
-    static let appGroupID = "group.com.aqua5624.RinhaBoard"
+    /// 実際に使える App Group ID。
+    /// AltStore 等で再署名されるとグループ ID がチーム付きに書き換わるため、
+    /// embedded.mobileprovision の Entitlements から実物を読む。
+    /// 読めない環境（未署名ビルド等）ではプロジェクト既定の ID を使う。
+    static let appGroupID: String = discoverAppGroupID()
+
+    private static func discoverAppGroupID() -> String {
+        let fallback = "group.com.aqua5624.RinhaBoard"
+        var urls = [Bundle.main.bundleURL
+            .appendingPathComponent("embedded.mobileprovision")]
+        // 拡張（.appex）からは2つ上が .app 本体
+        urls.append(Bundle.main.bundleURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("embedded.mobileprovision"))
+        for url in urls {
+            guard let data = try? Data(contentsOf: url),
+                  let text = String(data: data, encoding: .isoLatin1),
+                  let start = text.range(of: "<plist"),
+                  let end = text.range(of: "</plist>") else { continue }
+            let xml = String(text[start.lowerBound...end.upperBound])
+            guard let xmlData = xml.data(using: .utf8),
+                  let obj = try? PropertyListSerialization.propertyList(
+                    from: xmlData, options: [], format: nil) as? [String: Any],
+                  let entitlements = obj["Entitlements"] as? [String: Any],
+                  let groups = entitlements[
+                    "com.apple.security.application-groups"] as? [String],
+                  let group = groups.first else { continue }
+            return group
+        }
+        return fallback
+    }
 
     /// App Group の共有コンテナが本当に使えるか。
     /// UserDefaults(suiteName:) は権限が無くてもインスタンスを返すため、
@@ -118,11 +149,28 @@ enum SharedStore {
             forSecurityApplicationGroupIdentifier: appGroupID) != nil
     }
 
+    private static var didMigrate = false
+
     static var defaults: UserDefaults {
         if groupAvailable, let suite = UserDefaults(suiteName: appGroupID) {
+            migrateToSuiteIfNeeded(suite)
             return suite
         }
         return UserDefaults.standard
+    }
+
+    /// 共有が効いていなかった間に各プロセスの標準領域へ貯まった rb_* を、
+    /// 共有スイートへ一度だけ引き継ぐ（スイート側にある値を優先）。
+    private static func migrateToSuiteIfNeeded(_ suite: UserDefaults) {
+        if didMigrate { return }
+        didMigrate = true
+        let std = UserDefaults.standard
+        for (key, value) in std.dictionaryRepresentation()
+        where key.hasPrefix("rb_") {
+            if suite.object(forKey: key) == nil {
+                suite.set(value, forKey: key)
+            }
+        }
     }
 
     private static let keyClipItems = "rb_clipItems_v1"

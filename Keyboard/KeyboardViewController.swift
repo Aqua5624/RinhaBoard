@@ -1513,18 +1513,40 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: カーソル移動・テキスト編集パネル
 
-    /// 変換候補の一覧（▼から開く。全候補を1行ずつのリストで見せる）
+    /// 変換候補の一覧（▼から開く。カードの中に1候補1行、右に読み）
     private func buildCandidateList() {
         let header = makeRow([
             Spec("▲ 閉じる", .candidateListClose, small: true),
             Spec("✓確定", .commitComposing, small: true),
             Spec("✕ クリア", .clearComposing, small: true),
         ])
-        header.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        header.heightAnchor.constraint(equalToConstant: 40).isActive = true
         contentStack.addArrangedSubview(header)
+
+        let card = UIView()
+        card.backgroundColor = .secondarySystemBackground
+        card.layer.cornerRadius = 12
+        card.clipsToBounds = true
+        let wrap = UIView()
+        wrap.addSubview(card)
+        card.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            card.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 6),
+            card.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -6),
+            card.topAnchor.constraint(equalTo: wrap.topAnchor, constant: 2),
+            card.bottomAnchor.constraint(equalTo: wrap.bottomAnchor, constant: -4),
+        ])
 
         let scroll = UIScrollView()
         scroll.showsVerticalScrollIndicator = false
+        card.addSubview(scroll)
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: card.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+        ])
         let list = UIStackView()
         list.axis = .vertical
         list.spacing = 0
@@ -1538,29 +1560,56 @@ final class KeyboardViewController: UIInputViewController {
             list.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
         ])
         for (i, cand) in currentCandidates.enumerated() {
+            let reading = String(composingKana.prefix(cand.consumed))
+            let showReading = !reading.isEmpty && reading != cand.text
             let b = KBButton(type: .system)
             b.setTitle(cand.text, for: .normal)
             b.setTitleColor(.label, for: .normal)
             b.titleLabel?.font = .systemFont(ofSize: 17)
             b.titleLabel?.lineBreakMode = .byTruncatingTail
             b.contentHorizontalAlignment = .left
-            b.contentEdgeInsets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 12)
+            b.contentEdgeInsets = UIEdgeInsets(
+                top: 0, left: 16, bottom: 0, right: showReading ? 84 : 12)
             b.backgroundColor = .clear
             b.normalBg = .clear
             b.pressedBg = pressedKeyColor()
-            b.heightAnchor.constraint(equalToConstant: 50).isActive = true
+            b.heightAnchor.constraint(equalToConstant: 52).isActive = true
             b.action = .candidate(i)
             b.candidateValue = cand
             b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+            if showReading {
+                let rl = UILabel()
+                rl.text = reading
+                rl.font = .systemFont(ofSize: 13)
+                rl.textColor = .secondaryLabel
+                rl.textAlignment = .right
+                rl.isUserInteractionEnabled = false
+                rl.translatesAutoresizingMaskIntoConstraints = false
+                b.addSubview(rl)
+                NSLayoutConstraint.activate([
+                    rl.trailingAnchor.constraint(equalTo: b.trailingAnchor, constant: -14),
+                    rl.centerYAnchor.constraint(equalTo: b.centerYAnchor),
+                    rl.widthAnchor.constraint(lessThanOrEqualToConstant: 64),
+                ])
+            }
             list.addArrangedSubview(b)
             if i < currentCandidates.count - 1 {
                 let sep = UIView()
                 sep.backgroundColor = .separator
                 sep.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
-                list.addArrangedSubview(sep)
+                let sepWrap = UIView()
+                sepWrap.addSubview(sep)
+                sep.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    sep.leadingAnchor.constraint(equalTo: sepWrap.leadingAnchor, constant: 16),
+                    sep.trailingAnchor.constraint(equalTo: sepWrap.trailingAnchor),
+                    sep.topAnchor.constraint(equalTo: sepWrap.topAnchor),
+                    sep.bottomAnchor.constraint(equalTo: sepWrap.bottomAnchor),
+                ])
+                list.addArrangedSubview(sepWrap)
             }
         }
-        contentStack.addArrangedSubview(scroll)
+        contentStack.addArrangedSubview(wrap)
     }
 
     private func buildCursor() {
@@ -1932,6 +1981,17 @@ final class KeyboardViewController: UIInputViewController {
             if hasComposing {
                 mode = .candidateList
                 rebuildAll()
+                // 開くアニメーション（下からスライド＋フェード）
+                contentStack.alpha = 0
+                contentStack.transform = CGAffineTransform(
+                    translationX: 0, y: 18)
+                UIView.animate(withDuration: 0.28, delay: 0,
+                               usingSpringWithDamping: 0.92,
+                               initialSpringVelocity: 0.3,
+                               options: [.curveEaseOut]) {
+                    self.contentStack.alpha = 1
+                    self.contentStack.transform = .identity
+                }
             }
         case .candidateListClose:
             mode = .letters
