@@ -27,6 +27,8 @@ enum KeyAction {
 
 final class KBButton: UIButton {
     var action: KeyAction?
+    /// 候補ボタン用：表示した候補そのもの（確定時にリストを引き直さない）
+    var candidateValue: ConversionCandidate?
     /// 押している間の背景色（標準キーボードのような押下フィードバック用）
     var normalBg: UIColor?
     var pressedBg: UIColor?
@@ -70,7 +72,6 @@ final class KeyboardViewController: UIInputViewController {
     private let contentStack = UIStackView()
     private let stripScroll = UIScrollView()
     private let stripStack = UIStackView()
-    private var stripHeightConstraint: NSLayoutConstraint?
     private var heightConstraint: NSLayoutConstraint?
 
     private var backspaceTimer: Timer?
@@ -124,10 +125,10 @@ final class KeyboardViewController: UIInputViewController {
             stripStack.bottomAnchor.constraint(equalTo: stripScroll.contentLayoutGuide.bottomAnchor),
             stripStack.heightAnchor.constraint(equalTo: stripScroll.frameLayoutGuide.heightAnchor),
         ])
-        let sh = stripScroll.heightAnchor.constraint(equalToConstant: 0)
-        sh.isActive = true
-        stripHeightConstraint = sh
-        root.addArrangedSubview(stripScroll)
+        // 候補バーはツールバーの中に入れる（rebuildToolbar が配置する）
+        stripScroll.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        stripScroll.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        stripScroll.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         // ツールバー（Gboard風の上の帯）
         toolbar.axis = .horizontal
@@ -149,7 +150,7 @@ final class KeyboardViewController: UIInputViewController {
         feedback.prepare()
         // 変換エンジンの初期化（辞書読み込み）を表示直後に済ませ、
         // 最初のかな入力で固まらないようにする
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.3) {
             KanjiConverter.warmUp()
         }
 
@@ -198,7 +199,9 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func rebuildToolbar() {
-        toolbar.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        // 候補バー（stripScroll）はツールバーの住人として永続させる
+        toolbar.arrangedSubviews.forEach { if $0 !== stripScroll { $0.removeFromSuperview() } }
+        if stripScroll.superview != nil { stripScroll.removeFromSuperview() }
         toolbarButtons.removeAll()
 
         func toolButton(symbol: String?, title: String?, action: KeyAction) -> KBButton {
@@ -228,6 +231,10 @@ final class KeyboardViewController: UIInputViewController {
             title: nil,
             action: .toggleClipboard))
 
+        // クリップボードボタンの隣が変換候補の表示場所
+        toolbar.addArrangedSubview(stripScroll)
+        stripScroll.isHidden = (mode != .letters)
+
         if mode == .numbers {
             toolbar.addArrangedSubview(toolButton(
                 symbol: nil,
@@ -236,6 +243,7 @@ final class KeyboardViewController: UIInputViewController {
         }
 
         toolbar.addArrangedSubview(toolbarLabel)
+        toolbarLabel.isHidden = (mode != .clipboard)
         updateToolbarLabel()
 
         if mode == .clipboard {
@@ -250,8 +258,6 @@ final class KeyboardViewController: UIInputViewController {
         if mode == .clipboard {
             let count = SharedStore.loadClipItems().count
             toolbarLabel.text = hasFullAccess ? "クリップボード \(count)件" : "フルアクセスが必要です"
-        } else if lang == .kana && mode == .letters {
-            toolbarLabel.text = effectiveComposing().isEmpty ? "ローマ字入力中" : ""
         } else {
             toolbarLabel.text = ""
         }
@@ -269,17 +275,10 @@ final class KeyboardViewController: UIInputViewController {
         case .clipboard:
             base = 312
         }
-        // かな入力中は候補が空でもバー分の高さを常時確保する。
-        // 候補の出入りでキーボードが伸縮するとキーの位置がずれて打ちにくいため。
-        let stripReserved = (lang == .kana && mode == .letters)
-        let strip: CGFloat = stripReserved ? 42 : 0
+        // 候補バーはツールバーの中に入ったので、高さはモードの基本値だけ。
         // 同じ値の再代入でもレイアウトが走るので、変わるときだけ代入する
-        if heightConstraint?.constant != base + strip {
-            heightConstraint?.constant = base + strip
-        }
-        let stripH: CGFloat = stripReserved ? 36 : 0
-        if stripHeightConstraint?.constant != stripH {
-            stripHeightConstraint?.constant = stripH
+        if heightConstraint?.constant != base {
+            heightConstraint?.constant = base
         }
     }
 
@@ -298,7 +297,44 @@ final class KeyboardViewController: UIInputViewController {
         pendingRomaji = ""
     }
 
+    // MARK: マーク付きテキスト（入力中を入力欄に表示する）
+
+    /// 入力中のかなを入力欄にマーク付きテキスト（下線表示）として反映する。
+    /// これが無いと、確定するまで入力欄に何も出なくて不安になる。
+    private func updateMarkedText() {
+        if lang == .kana && mode == .letters && hasComposing {
+            let eff = effectiveComposing()
+            textDocumentProxy.setMarkedText(
+                eff, selectedRange: NSRange(location: eff.count, length: 0))
+        } else {
+            textDocumentProxy.unmarkText()
+        }
+    }
+
+    /// マーク付きテキストを消してから確定文字列を挿入する
+    /// （insertText のマーク置換挙動はアプリ依存なので、先に明示的に消す）
+    private func insertCommitted(_ text: String) {
+        textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
+        textDocumentProxy.unmarkText()
+        if !text.isEmpty {
+            textDocumentProxy.insertText(text)
+        }
+    }
+
+    override func selectionDidChange(_ textInput: UITextInput?) {
+        super.selectionDidChange(textInput)
+        guard hasComposing else { return }
+        // 自分のマーク中テキストの直後にカーソルがあるなら何もしない。
+        // それ以外（ユーザーがカーソルを動かした等）は入力中をそのまま
+        // 確定して、内部バッファと入力欄の同期ズレを防ぐ
+        let eff = effectiveComposing()
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        if before.hasSuffix(eff) { return }
+        commitRawAll()
+    }
+
     private func refreshCandidates() {
+        updateMarkedText()
         let eff = effectiveComposing()
         // 表示（入力中のかな）は即時更新する。変換候補の取得は重いので
         // バックグラウンドで行い、届いたら差し替える（打鍵の反応を遅らせない）
@@ -345,12 +381,6 @@ final class KeyboardViewController: UIInputViewController {
         stripStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !currentCandidates.isEmpty else { return }
 
-        let composingLabel = UILabel()
-        composingLabel.text = effectiveComposing()
-        composingLabel.font = .systemFont(ofSize: 15, weight: .semibold)
-        composingLabel.textColor = .secondaryLabel
-        stripStack.addArrangedSubview(composingLabel)
-
         for (i, cand) in currentCandidates.enumerated() {
             let b = KBButton(type: .system)
             b.setTitle(cand.text, for: .normal)
@@ -360,6 +390,7 @@ final class KeyboardViewController: UIInputViewController {
             b.layer.cornerRadius = 6
             b.contentEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
             b.action = .candidate(i)
+            b.candidateValue = cand
             b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
             stripStack.addArrangedSubview(b)
         }
@@ -396,7 +427,7 @@ final class KeyboardViewController: UIInputViewController {
         let ordered = currentCandidates
         guard ordered.indices.contains(index) else { return }
         let cand = ordered[index]
-        textDocumentProxy.insertText(cand.text)
+        insertCommitted(cand.text)
         // azooKey エンジン側の学習へ通知（ユーザ辞書・自前候補は対象外）
         KanjiConverter.notifySelected(cand)
         composingKana = String(composingKana.dropFirst(cand.consumed))
@@ -411,7 +442,7 @@ final class KeyboardViewController: UIInputViewController {
             guardCount += 1
             let cands = KanjiConverter.candidates(for: composingKana)
             guard let first = cands.first, first.consumed > 0 else { break }
-            textDocumentProxy.insertText(first.text)
+            insertCommitted(first.text)
             KanjiConverter.notifySelected(first)
             let before = composingKana
             composingKana = String(composingKana.dropFirst(first.consumed))
@@ -426,7 +457,7 @@ final class KeyboardViewController: UIInputViewController {
     private func commitRawAll() {
         materializeComposing()
         if !composingKana.isEmpty {
-            textDocumentProxy.insertText(composingKana)
+            insertCommitted(composingKana)
             composingKana = ""
         }
         refreshCandidates()
@@ -802,7 +833,27 @@ final class KeyboardViewController: UIInputViewController {
 
     @objc private func keyTapped(_ sender: KBButton) {
         guard let action = sender.action else { return }
+        if case .candidate = action, let cand = sender.candidateValue {
+            // 表示されていた候補そのものを確定する（リストの再取得で化けない）
+            commitCandidateValue(cand)
+            tapFeedback()
+            return
+        }
         handle(action)
+    }
+
+    /// 候補バーに表示されていた候補そのものを確定する
+    private func commitCandidateValue(_ cand: ConversionCandidate) {
+        materializeComposing()
+        guard cand.consumed > 0, cand.consumed <= composingKana.count else {
+            // 表示の後に入力が進んでいて消費数が合わない場合は取り直す
+            commitCandidate(at: 0)
+            return
+        }
+        insertCommitted(cand.text)
+        KanjiConverter.notifySelected(cand)
+        composingKana = String(composingKana.dropFirst(cand.consumed))
+        refreshCandidates()
     }
 
     private func handle(_ action: KeyAction) {
@@ -903,6 +954,9 @@ final class KeyboardViewController: UIInputViewController {
         case .commitComposing:
             commitConvertedAll()
         case .clearComposing:
+            // マーク付きテキストごと消す（unmark だけだと文字が残ってしまう）
+            textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
+            textDocumentProxy.unmarkText()
             composingKana = ""
             pendingRomaji = ""
             refreshCandidates()

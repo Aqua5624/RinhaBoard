@@ -17,6 +17,22 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      - name: Cache Zenzai model
+        uses: actions/cache@v4
+        with:
+          path: Keyboard/Models/ggml-model-Q5_K_M.gguf
+          key: zenz-v3.2-small-q5km-v1
+
+      - name: Download Zenzai model
+        run: |
+          if [ ! -f Keyboard/Models/ggml-model-Q5_K_M.gguf ]; then
+            mkdir -p Keyboard/Models
+            curl -fL -o Keyboard/Models/ggml-model-Q5_K_M.gguf \
+              https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf
+          fi
+          head -c 4 Keyboard/Models/ggml-model-Q5_K_M.gguf | grep -q GGUF
+          ls -lh Keyboard/Models/
+
       - name: Build unsigned
         run: |
           xcodebuild \
@@ -36,6 +52,7 @@ jobs:
           echo "App: $APP"
           ls "$APP/PlugIns"
           test -d "$APP/PlugIns/RinhaBoardKeyboard.appex"
+          ls -lh "$APP/PlugIns/RinhaBoardKeyboard.appex/ggml-model-Q5_K_M.gguf"
 
       - name: Package IPA
         run: |
@@ -43,22 +60,22 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP" Payload/
-          zip -r SparkleKey-unsigned-v0.3.3.ipa Payload
-          ls -lh SparkleKey-unsigned-v0.3.3.ipa
+          zip -r SparkleKey-unsigned-v0.4.0.ipa Payload
+          ls -lh SparkleKey-unsigned-v0.4.0.ipa
 
       - name: Upload IPA artifact
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: SparkleKey-unsigned
-          path: SparkleKey-unsigned-v0.3.3.ipa
+          path: SparkleKey-unsigned-v0.4.0.ipa
           retention-days: 14
 
       - name: Publish IPA as release asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          IPA="SparkleKey-unsigned-v0.3.3.ipa"
+          IPA="SparkleKey-unsigned-v0.4.0.ipa"
           TAG="v$(echo "$IPA" | sed -E 's/.*-v([0-9]+\.[0-9]+\.[0-9]+)\.ipa/\1/')"
           echo "Publishing $IPA to release $TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then

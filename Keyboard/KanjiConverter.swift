@@ -81,7 +81,7 @@ private final class AzooKeyEngine {
         let dir = storageDir
         let options = ConvertRequestOptions(
             N_best: 10,
-            requireJapanesePrediction: .autoMix,
+            requireJapanesePrediction: .disabled,
             requireEnglishPrediction: .disabled,
             keyboardLanguage: .ja_JP,
             englishCandidateInRoman2KanaInput: true,
@@ -94,10 +94,24 @@ private final class AzooKeyEngine {
             sharedContainerURL: dir,
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
-            metadata: .init(versionString: "Sparkle Key 0.3.3")
+            zenzaiMode: zenzaiMode(),
+            metadata: .init(versionString: "Sparkle Key 0.4.0")
         )
         cachedOptions = options
         return options
+    }
+
+    /// Zenzai（AI変換）: モデルファイルが拡張バンドルにあれば有効化する。
+    /// モデルは CI で HuggingFace の公式配布（Miwa-Keita/zenz-v3.2-small-gguf）
+    /// から取得して同梱する。無ければ通常変換にフォールバック。
+    private func zenzaiMode() -> ConvertRequestOptions.ZenzaiMode {
+        let weight = Bundle.main.bundleURL
+            .appendingPathComponent("ggml-model-Q5_K_M.gguf")
+        guard FileManager.default.fileExists(atPath: weight.path) else {
+            return .off
+        }
+        return .on(weight: weight, inferenceLimit: 2, personalizationMode: nil,
+                   versionDependentMode: .v3(.init()))
     }
 
     /// ユーザー辞書のキャッシュ（保存データが変わったときだけ読み直す）
@@ -174,14 +188,13 @@ private final class AzooKeyEngine {
                 text: text, consumed: min(consumed, composing.count), azooCandidate: candidate))
         }
 
-        // 文全体の変換（最初の候補だけ）→ 最初の文節の候補 → 予測候補の順
-        if let full = results.mainResults.first {
-            appendAzoo(full)
-        }
-        for cand in results.firstClauseResults {
+        // 文全体の変換（全候補）→ 最初の文節の候補、の順。
+        // 文節候補を文全体より前に出すと、タップした候補で文が細切れに
+        // 確定されて変換が不安定に見えるため、文全体を優先する。
+        for cand in results.mainResults {
             appendAzoo(cand)
         }
-        for cand in results.mainResults.dropFirst() {
+        for cand in results.firstClauseResults {
             appendAzoo(cand)
         }
 
