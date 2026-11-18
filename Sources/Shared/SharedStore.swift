@@ -109,8 +109,17 @@ enum NumberStyle: String, CaseIterable, Identifiable {
 enum SharedStore {
     static let appGroupID = "group.com.aqua5624.RinhaBoard"
 
+    /// App Group の共有コンテナが本当に使えるか。
+    /// UserDefaults(suiteName:) は権限が無くてもインスタンスを返すため、
+    /// 共有できているかはこちらで判定する（本体と拡張で別々の保存領域を
+    /// 読んでしまうと、設定が届かない・データが食い違う原因になる）。
+    static var groupAvailable: Bool {
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupID) != nil
+    }
+
     static var defaults: UserDefaults {
-        if let suite = UserDefaults(suiteName: appGroupID) {
+        if groupAvailable, let suite = UserDefaults(suiteName: appGroupID) {
             return suite
         }
         return UserDefaults.standard

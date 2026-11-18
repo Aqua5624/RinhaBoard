@@ -17,6 +17,7 @@ enum KeyAction {
     case toggleCursor
     case cursorMove(Int)
     case autoConvertToggle
+    case noop
     case copyText
     case cutText
     case pasteText
@@ -1512,7 +1513,7 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: カーソル移動・テキスト編集パネル
 
-    /// 変換候補の一覧（▼から開く。全候補をグリッドで見せる）
+    /// 変換候補の一覧（▼から開く。全候補を1行ずつのリストで見せる）
     private func buildCandidateList() {
         let header = makeRow([
             Spec("▲ 閉じる", .candidateListClose, small: true),
@@ -1524,46 +1525,40 @@ final class KeyboardViewController: UIInputViewController {
 
         let scroll = UIScrollView()
         scroll.showsVerticalScrollIndicator = false
-        let grid = UIStackView()
-        grid.axis = .vertical
-        grid.spacing = 2
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        scroll.addSubview(grid)
+        let list = UIStackView()
+        list.axis = .vertical
+        list.spacing = 0
+        list.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(list)
         NSLayoutConstraint.activate([
-            grid.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
-            grid.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
-            grid.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
-            grid.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
-            grid.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+            list.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            list.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            list.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            list.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            list.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
         ])
-        let cols = 3
-        for start in stride(from: 0, to: currentCandidates.count, by: cols) {
-            let row = UIStackView()
-            row.axis = .horizontal
-            row.distribution = .fillEqually
-            row.spacing = 2
-            row.heightAnchor.constraint(equalToConstant: 44).isActive = true
-            for j in 0..<cols {
-                if start + j < currentCandidates.count {
-                    let cand = currentCandidates[start + j]
-                    let b = KBButton(type: .system)
-                    b.setTitle(cand.text, for: .normal)
-                    b.setTitleColor(.label, for: .normal)
-                    b.titleLabel?.font = .systemFont(ofSize: 15)
-                    b.titleLabel?.lineBreakMode = .byTruncatingTail
-                    b.backgroundColor = normalKeyColor()
-                    b.normalBg = normalKeyColor()
-                    b.pressedBg = pressedKeyColor()
-                    b.layer.cornerRadius = 8
-                    b.action = .candidate(start + j)
-                    b.candidateValue = cand
-                    b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
-                    row.addArrangedSubview(b)
-                } else {
-                    row.addArrangedSubview(UIView())
-                }
+        for (i, cand) in currentCandidates.enumerated() {
+            let b = KBButton(type: .system)
+            b.setTitle(cand.text, for: .normal)
+            b.setTitleColor(.label, for: .normal)
+            b.titleLabel?.font = .systemFont(ofSize: 17)
+            b.titleLabel?.lineBreakMode = .byTruncatingTail
+            b.contentHorizontalAlignment = .left
+            b.contentEdgeInsets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 12)
+            b.backgroundColor = .clear
+            b.normalBg = .clear
+            b.pressedBg = pressedKeyColor()
+            b.heightAnchor.constraint(equalToConstant: 50).isActive = true
+            b.action = .candidate(i)
+            b.candidateValue = cand
+            b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+            list.addArrangedSubview(b)
+            if i < currentCandidates.count - 1 {
+                let sep = UIView()
+                sep.backgroundColor = .separator
+                sep.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
+                list.addArrangedSubview(sep)
             }
-            grid.addArrangedSubview(row)
         }
         contentStack.addArrangedSubview(scroll)
     }
@@ -1592,6 +1587,15 @@ final class KeyboardViewController: UIInputViewController {
         ])
         settingRow.heightAnchor.constraint(equalToConstant: 52).isActive = true
         contentStack.addArrangedSubview(settingRow)
+
+        let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let infoRow = makeRow([
+            Spec("Sparkle Key \(version) / 設定共有 \(SharedStore.groupAvailable ? "OK" : "NG")",
+                 .noop, small: true),
+        ])
+        infoRow.heightAnchor.constraint(equalToConstant: 40).isActive = true
+        contentStack.addArrangedSubview(infoRow)
 
         let bottom = bottomRow(firstLabel: "ABC", firstAction: .showLetters)
         bottom.heightAnchor.constraint(equalToConstant: 48).isActive = true
@@ -1882,6 +1886,8 @@ final class KeyboardViewController: UIInputViewController {
         case .autoConvertToggle:
             SharedStore.autoConvertEnabled = !SharedStore.autoConvertEnabled
             rebuildContent()
+        case .noop:
+            break
         case .toggleCursor:
             mode = (mode == .cursor) ? .letters : .cursor
             rebuildAll()
