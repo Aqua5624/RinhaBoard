@@ -613,15 +613,13 @@ final class KeyboardViewController: UIInputViewController {
     /// 表示中の候補列（currentCandidates）をそのまま使う（表示と確定の不一致を避ける）。
     private func commitCandidate(at index: Int) {
         materializeComposing()
-        // 非同期取得がまだ追いついていない場合: 表示中の候補が今の入力の
-        // 前方一致（入力が伸びただけ）ならそのまま使う。そうでない時だけ
-        // その場で同期取得する（メインスレッドのブロックを避ける）
+        // 候補は「取得した時点の入力」に対するもの。入力が伸びた後に古い候補を
+        // 使うと consumed（消費する読み）が今の入力と合わず、文が細切れに
+        // 確定される（「の野村龍太郎」の原因）。一致する時だけ再利用し、
+        // それ以外はその場で同期取得する。
         if candidatesFor != composingKana {
-            let reusable = !candidatesFor.isEmpty && composingKana.hasPrefix(candidatesFor)
-            if !reusable {
-                currentCandidates = KanjiConverter.candidates(for: composingKana)
-                candidatesFor = composingKana
-            }
+            currentCandidates = KanjiConverter.candidates(for: composingKana)
+            candidatesFor = composingKana
         }
         let ordered = currentCandidates
         guard ordered.indices.contains(index) else { return }

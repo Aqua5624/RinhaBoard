@@ -182,35 +182,35 @@ private final class AzooKeyEngine {
         var result: [ConversionCandidate] = []
         var seen = Set<String>()
 
-        // ユーザー辞書（最優先・長い読みから）
+        // ユーザー辞書・学習は「読み全体に一致する候補」だけを先頭に置く。
+        // 部分一致（例: 読み「の」→「の」）を文全体の変換より前に置くと、
+        // 全確定が短い候補で文を細切れにしてしまう（「の野村龍太郎」の原因）。
+        // 部分一致は文全体の変換の後ろに回す。
+        var dictFull: [ConversionCandidate] = []
+        var dictPartial: [ConversionCandidate] = []
+        func collectDict(reading: String, word: String, isUserDict: Bool, len: Int) {
+            guard !seen.contains(word) else { return }
+            seen.insert(word)
+            let cand = ConversionCandidate(
+                text: word, consumed: len, azooCandidate: nil, isUserDict: isUserDict)
+            if len == composing.count { dictFull.append(cand) } else { dictPartial.append(cand) }
+        }
+        let chars = Array(composing)
         let entries = userDictEntries()
-        if !entries.isEmpty {
-            let chars = Array(composing)
-            for len in stride(from: chars.count, through: 1, by: -1) {
-                let prefix = String(chars.prefix(len))
-                for entry in entries where entry.reading == prefix {
-                    guard !seen.contains(entry.word) else { continue }
-                    seen.insert(entry.word)
-                    result.append(ConversionCandidate(
-                        text: entry.word, consumed: len, azooCandidate: nil, isUserDict: true))
-                }
+        for len in stride(from: chars.count, through: 1, by: -1) {
+            let prefix = String(chars.prefix(len))
+            for entry in entries where entry.reading == prefix {
+                collectDict(reading: entry.reading, word: entry.word, isUserDict: true, len: len)
             }
         }
-
-        // 学習した変換（ユーザー辞書の次に優先。よく選ぶものから）
         let learned = learnedWords()
-        if !learned.isEmpty {
-            let chars = Array(composing)
-            for len in stride(from: chars.count, through: 1, by: -1) {
-                let prefix = String(chars.prefix(len))
-                for entry in learned where entry.reading == prefix {
-                    guard !seen.contains(entry.word) else { continue }
-                    seen.insert(entry.word)
-                    result.append(ConversionCandidate(
-                        text: entry.word, consumed: len))
-                }
+        for len in stride(from: chars.count, through: 1, by: -1) {
+            let prefix = String(chars.prefix(len))
+            for entry in learned where entry.reading == prefix {
+                collectDict(reading: entry.reading, word: entry.word, isUserDict: false, len: len)
             }
         }
+        result += dictFull
 
         func appendAzoo(_ candidate: Candidate) {
             guard candidate.inputable else { return }
@@ -229,6 +229,7 @@ private final class AzooKeyEngine {
         for cand in results.mainResults {
             appendAzoo(cand)
         }
+        result += dictPartial
         for cand in results.firstClauseResults {
             appendAzoo(cand)
         }

@@ -10,26 +10,28 @@ let modelPath = CommandLine.arguments[1]
 let dataDir = URL(fileURLWithPath: "/tmp/zenzcheck-data")
 try? FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
 
-let options = ConvertRequestOptions(
-    N_best: 10,
-    requireJapanesePrediction: .disabled,
-    requireEnglishPrediction: .disabled,
-    keyboardLanguage: .ja_JP,
-    englishCandidateInRoman2KanaInput: true,
-    fullWidthRomanCandidate: false,
-    halfWidthKanaCandidate: false,
-    learningType: .inputAndOutput,
-    maxMemoryCount: 65536,
-    shouldResetMemory: false,
-    memoryDirectoryURL: dataDir,
-    sharedContainerURL: dataDir,
-    textReplacer: .withDefaultEmojiDictionary(),
-    specialCandidateProviders: nil,
-    zenzaiMode: .on(weight: URL(fileURLWithPath: modelPath),
-                    inferenceLimit: 1, personalizationMode: nil,
-                    versionDependentMode: .v3(.init())),
-    metadata: .init(versionString: "zenzcheck")
-)
+func makeOptions(limit: Int) -> ConvertRequestOptions {
+    ConvertRequestOptions(
+        N_best: 10,
+        requireJapanesePrediction: .disabled,
+        requireEnglishPrediction: .disabled,
+        keyboardLanguage: .ja_JP,
+        englishCandidateInRoman2KanaInput: true,
+        fullWidthRomanCandidate: false,
+        halfWidthKanaCandidate: false,
+        learningType: .inputAndOutput,
+        maxMemoryCount: 65536,
+        shouldResetMemory: false,
+        memoryDirectoryURL: dataDir,
+        sharedContainerURL: dataDir,
+        textReplacer: .withDefaultEmojiDictionary(),
+        specialCandidateProviders: nil,
+        zenzaiMode: .on(weight: URL(fileURLWithPath: modelPath),
+                        inferenceLimit: limit, personalizationMode: nil,
+                        versionDependentMode: .v3(.init())),
+        metadata: .init(versionString: "zenzcheck")
+    )
+}
 
 func inputCount(of count: ComposingCount) -> Int {
     switch count {
@@ -46,10 +48,10 @@ struct Cand { let text: String; let consumed: Int }
 
 /// アプリの AzooKeyEngine.candidates と同じ組み立て（辞書・学習マージなし）
 @MainActor
-func appCandidates(for composing: String) -> [Cand] {
+func appCandidates(for composing: String, limit: Int) -> [Cand] {
     var ct = ComposingText()
     ct.insertAtCursorPosition(composing, inputStyle: .direct)
-    let results = converter.requestCandidates(ct, options: options)
+    let results = converter.requestCandidates(ct, options: makeOptions(limit: limit))
     var result: [Cand] = []
     var seen = Set<String>()
     func append(_ c: Candidate) {
@@ -84,26 +86,31 @@ let inputs = [
     "あしたのよていをきめる",
     "にほんごをべんきょうしています",
     "かんじへんかんのてすとです",
+    "そうそうのふりーれん",
+    "ののむらりゅうたろう",
+    "ゆりぞのせいあ",
+    "しろがねけい",
 ]
 for input in inputs {
-    print("===== input: \(input) (count \(input.count))")
-    for c in appCandidates(for: input).prefix(6) {
-        print("  cand: \(c.text) consumed=\(c.consumed)")
-    }
-    var rest = input
-    var out = ""
-    var step = 0
-    while !rest.isEmpty && step < 64 {
-        step += 1
-        let cands = appCandidates(for: rest)
-        guard let f = cands.first, f.consumed > 0 else {
-            print("  !! no candidate for rest=\(rest)")
-            break
+    for limit in [1, 2, 3] {
+        print("===== input: \(input) (count \(input.count)) limit=\(limit)")
+        for c in appCandidates(for: input, limit: limit).prefix(5) {
+            print("  cand: \(c.text) consumed=\(c.consumed)")
         }
-        print("  step \(step): rest=\(rest) -> \(f.text) (consumed \(f.consumed))")
-        out += f.text
-        rest = String(rest.dropFirst(f.consumed))
+        var rest = input
+        var out = ""
+        var step = 0
+        while !rest.isEmpty && step < 64 {
+            step += 1
+            let cands = appCandidates(for: rest, limit: limit)
+            guard let f = cands.first, f.consumed > 0 else {
+                print("  !! no candidate for rest=\(rest)")
+                break
+            }
+            out += f.text
+            rest = String(rest.dropFirst(f.consumed))
+        }
+        print("  OUTPUT(limit=\(limit)): \(out)")
     }
-    print("  OUTPUT: \(out)")
 }
 print("DONE")
