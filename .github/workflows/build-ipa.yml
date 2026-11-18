@@ -21,14 +21,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Keyboard/Models/ggml-model-Q5_K_M.gguf
-          key: zenz-v3.2-xsmall-q5km-v1
+          key: zenz-v3.2-small-q5km-v1
 
       - name: Download Zenzai model
         run: |
           if [ ! -f Keyboard/Models/ggml-model-Q5_K_M.gguf ]; then
             mkdir -p Keyboard/Models
             curl -fL -o Keyboard/Models/ggml-model-Q5_K_M.gguf \
-              https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf/resolve/main/ggml-model-Q5_K_M.gguf
+              https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf/resolve/main/ggml-model-Q5_K_M.gguf
           fi
           head -c 4 Keyboard/Models/ggml-model-Q5_K_M.gguf | grep -q GGUF
           ls -lh Keyboard/Models/
