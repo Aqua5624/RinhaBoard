@@ -20,7 +20,7 @@ jobs:
       - name: Build checker
         run: |
           cd zenz-check
-          swift build -c release 2>&1 | tail -3
+          swift build -c release 2>&1 | tail -60
           cp .build/release/zenzcheck /tmp/zenzcheck
           find .build -name "llama.framework" -type d
           FW=$(find .build -path "*macos*" -name "llama.framework" -type d | head -1)
