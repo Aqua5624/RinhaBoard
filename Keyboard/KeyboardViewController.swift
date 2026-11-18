@@ -1513,40 +1513,11 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: カーソル移動・テキスト編集パネル
 
-    /// 変換候補の一覧（▼から開く。カードの中に1候補1行、右に読み）
+    /// 変換候補の一覧（▼から開く。標準キーボード風：候補が幅に合わせて
+    /// 行に流れ込み、行ごとに罫線。1行目の右端に ∧（閉じる））
     private func buildCandidateList() {
-        let header = makeRow([
-            Spec("▲ 閉じる", .candidateListClose, small: true),
-            Spec("✓確定", .commitComposing, small: true),
-            Spec("✕ クリア", .clearComposing, small: true),
-        ])
-        header.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        contentStack.addArrangedSubview(header)
-
-        let card = UIView()
-        card.backgroundColor = .secondarySystemBackground
-        card.layer.cornerRadius = 12
-        card.clipsToBounds = true
-        let wrap = UIView()
-        wrap.addSubview(card)
-        card.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 6),
-            card.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -6),
-            card.topAnchor.constraint(equalTo: wrap.topAnchor, constant: 2),
-            card.bottomAnchor.constraint(equalTo: wrap.bottomAnchor, constant: -4),
-        ])
-
         let scroll = UIScrollView()
         scroll.showsVerticalScrollIndicator = false
-        card.addSubview(scroll)
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: card.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: card.bottomAnchor),
-        ])
         let list = UIStackView()
         list.axis = .vertical
         list.spacing = 0
@@ -1559,57 +1530,76 @@ final class KeyboardViewController: UIInputViewController {
             list.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
             list.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
         ])
+
+        // 候補を文字幅で測って行に詰める（標準キーボードの折り返し方）
+        let font = UIFont.systemFont(ofSize: 19)
+        let panelWidth = (view.bounds.width > 0 ? view.bounds.width
+                          : UIScreen.main.bounds.width) - 4
+        var rows: [[Int]] = []
+        var current: [Int] = []
+        var currentWidth: CGFloat = 0
         for (i, cand) in currentCandidates.enumerated() {
-            let reading = String(composingKana.prefix(cand.consumed))
-            let showReading = !reading.isEmpty && reading != cand.text
+            let w = (cand.text as NSString).size(
+                withAttributes: [.font: font]).width + 30
+            let limit = panelWidth - (rows.isEmpty ? 46 : 0)
+            if !current.isEmpty && currentWidth + w > limit {
+                rows.append(current)
+                current = []
+                currentWidth = 0
+            }
+            current.append(i)
+            currentWidth += w
+        }
+        if !current.isEmpty { rows.append(current) }
+
+        func candidateButton(_ i: Int) -> KBButton {
+            let cand = currentCandidates[i]
             let b = KBButton(type: .system)
             b.setTitle(cand.text, for: .normal)
             b.setTitleColor(.label, for: .normal)
-            b.titleLabel?.font = .systemFont(ofSize: 17)
+            b.titleLabel?.font = font
             b.titleLabel?.lineBreakMode = .byTruncatingTail
-            b.contentHorizontalAlignment = .left
-            b.contentEdgeInsets = UIEdgeInsets(
-                top: 0, left: 16, bottom: 0, right: showReading ? 84 : 12)
+            b.titleLabel?.adjustsFontSizeToFitWidth = true
+            b.titleLabel?.minimumScaleFactor = 0.7
             b.backgroundColor = .clear
             b.normalBg = .clear
             b.pressedBg = pressedKeyColor()
-            b.heightAnchor.constraint(equalToConstant: 52).isActive = true
             b.action = .candidate(i)
             b.candidateValue = cand
             b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
-            if showReading {
-                let rl = UILabel()
-                rl.text = reading
-                rl.font = .systemFont(ofSize: 13)
-                rl.textColor = .secondaryLabel
-                rl.textAlignment = .right
-                rl.isUserInteractionEnabled = false
-                rl.translatesAutoresizingMaskIntoConstraints = false
-                b.addSubview(rl)
-                NSLayoutConstraint.activate([
-                    rl.trailingAnchor.constraint(equalTo: b.trailingAnchor, constant: -14),
-                    rl.centerYAnchor.constraint(equalTo: b.centerYAnchor),
-                    rl.widthAnchor.constraint(lessThanOrEqualToConstant: 64),
-                ])
-            }
-            list.addArrangedSubview(b)
-            if i < currentCandidates.count - 1 {
-                let sep = UIView()
-                sep.backgroundColor = .separator
-                sep.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
-                let sepWrap = UIView()
-                sepWrap.addSubview(sep)
-                sep.translatesAutoresizingMaskIntoConstraints = false
-                NSLayoutConstraint.activate([
-                    sep.leadingAnchor.constraint(equalTo: sepWrap.leadingAnchor, constant: 16),
-                    sep.trailingAnchor.constraint(equalTo: sepWrap.trailingAnchor),
-                    sep.topAnchor.constraint(equalTo: sepWrap.topAnchor),
-                    sep.bottomAnchor.constraint(equalTo: sepWrap.bottomAnchor),
-                ])
-                list.addArrangedSubview(sepWrap)
-            }
+            return b
         }
-        contentStack.addArrangedSubview(wrap)
+        func separator() -> UIView {
+            let sep = UIView()
+            sep.backgroundColor = .separator
+            sep.heightAnchor.constraint(
+                equalToConstant: 1 / UIScreen.main.scale).isActive = true
+            return sep
+        }
+
+        for (r, rowIdxs) in rows.enumerated() {
+            let rowStack = UIStackView()
+            rowStack.axis = .horizontal
+            rowStack.distribution = .fillEqually
+            for i in rowIdxs { rowStack.addArrangedSubview(candidateButton(i)) }
+            rowStack.heightAnchor.constraint(equalToConstant: 54).isActive = true
+            if r == 0 {
+                let chevron = KBButton(type: .system)
+                chevron.setImage(UIImage(systemName: "chevron.up"), for: .normal)
+                chevron.tintColor = .secondaryLabel
+                chevron.action = .candidateListClose
+                chevron.addTarget(self, action: #selector(keyTapped(_:)),
+                                  for: .touchUpInside)
+                chevron.widthAnchor.constraint(equalToConstant: 46).isActive = true
+                let topRow = UIStackView(arrangedSubviews: [rowStack, chevron])
+                topRow.axis = .horizontal
+                list.addArrangedSubview(topRow)
+            } else {
+                list.addArrangedSubview(rowStack)
+            }
+            if r < rows.count - 1 { list.addArrangedSubview(separator()) }
+        }
+        contentStack.addArrangedSubview(scroll)
     }
 
     private func buildCursor() {
