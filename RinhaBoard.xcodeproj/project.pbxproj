@@ -83,7 +83,7 @@
 		000000000000000000000010 /* Info.plist (keyboard) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Keyboard/Info.plist"; sourceTree = "<group>"; };
 		000000000000000000000026 /* KanjiConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Keyboard/KanjiConverter.swift"; sourceTree = "<group>"; };
 		000000000000000000000011 /* RinhaBoardKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Keyboard/RinhaBoardKeyboard.entitlements"; sourceTree = "<group>"; };
-		000000000000000000000041 /* ggml-model-Q5_K_M.gguf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Models/ggml-model-Q5_K_M.gguf"; sourceTree = "<group>"; };
+		000000000000000000000041 /* ggml-model-Q5_K_M.gguf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Keyboard/Models/ggml-model-Q5_K_M.gguf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
