@@ -1,6 +1,8 @@
 import SwiftUI
 import UIKit
 
+/// Sparkle Key 本体アプリ（設定画面）
+/// キーボードと同じ Material You 風デザイン: 水色グレーの地に白カード、青アクセント
 struct ContentView: View {
     @State private var numberStyle: NumberStyle = SharedStore.numberStyle
     @State private var autoCapture: Bool = SharedStore.autoCaptureClipboard
@@ -15,135 +17,315 @@ struct ContentView: View {
     @State private var newWord: String = ""
     @State private var newPOS: UserDictPartOfSpeech = .proper
 
+    // MARK: - パレット
+
+    private var boardColor: Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.075, green: 0.075, blue: 0.078, alpha: 1)
+                : UIColor(red: 0.914, green: 0.933, blue: 0.965, alpha: 1)
+        })
+    }
+
+    private var cardColor: Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.13, green: 0.13, blue: 0.15, alpha: 1)
+                : .white
+        })
+    }
+
+    private var fieldColor: Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.19, green: 0.19, blue: 0.21, alpha: 1)
+                : UIColor(red: 0.93, green: 0.95, blue: 0.98, alpha: 1)
+        })
+    }
+
+    private let accent = Color(red: 0.043, green: 0.341, blue: 0.816) // #0B57D0
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
+    }
+
     var body: some View {
         NavigationView {
-            List {
-                headerSection
-                setupSection
-                keyboardSettingsSection
-                userDictSection
-                clipboardSection
-                notesSection
+            ScrollView {
+                VStack(spacing: 16) {
+                    headerCard
+                    setupCard
+                    keyboardCard
+                    userDictCard
+                    clipboardCard
+                    notesCard
+                    Text("Sparkle Key バージョン \(appVersion)")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 8)
+                }
+                .padding(16)
             }
+            .background(boardColor.ignoresSafeArea())
             .navigationTitle("Sparkle Key")
             .onAppear { reload() }
         }
         .navigationViewStyle(.stack)
     }
 
-    // MARK: - セクション
+    // MARK: - 共通部品
 
-    private var headerSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Gboard風の自作キーボード")
-                    .font(.headline)
-                Text("QWERTY配列、地球儀キーで他のキーボードへ切替、数字は「QWERTY数字／テンキー」の2種類、クリップボード履歴つき。ツールバーの「あ」ボタンでローマ字入力＋かな漢字変換もできます。")
-                    .font(.subheadline)
+    private func card<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(cardColor)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
+    }
+
+    private func iconChip(_ systemName: String, _ tint: Color) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundColor(tint)
+            .frame(width: 32, height: 32)
+            .background(tint.opacity(0.14))
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private func toggleRow(icon: String, tint: Color, title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            iconChip(icon, tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body)
+                Text(subtitle)
+                    .font(.caption)
                     .foregroundColor(.secondary)
             }
-            .padding(.vertical, 4)
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(accent)
         }
     }
 
-    private var setupSection: some View {
-        Section(header: Text("有効化の手順")) {
-            VStack(alignment: .leading, spacing: 8) {
-                step(1, "下のボタンから設定アプリを開く")
-                step(2, "一般 → キーボード → キーボード → 新しいキーボードを追加 → Sparkle Key")
-                step(3, "追加した Sparkle Key を開いて「フルアクセスを許可」をON（クリップボード履歴に必要）")
-                step(4, "どのアプリでも、キーボードの地球儀キーを押せば Sparkle Key に切り替わります")
+    private func pillButton(title: String, filled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 18)
+                .padding(.vertical, 9)
+                .background(filled ? accent : fieldColor)
+                .foregroundColor(filled ? .white : .primary)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - ヘッダー
+
+    private var headerCard: some View {
+        HStack(spacing: 14) {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.55, green: 0.36, blue: 0.96),
+                             Color(red: 0.85, green: 0.30, blue: 0.75)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 56, height: 56)
+                .overlay(
+                    Text("✦")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(.white))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Sparkle Key")
+                    .font(.title3.weight(.bold))
+                Text("Gboard風の自作キーボード。QWERTYローマ字入力とフリック入力、azooKey＋Zenzai の変換、クリップボード履歴つき。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            .font(.subheadline)
-            Button("設定アプリを開く") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(cardColor)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
+    }
+
+    // MARK: - 有効化の手順
+
+    private var setupCard: some View {
+        card(title: "有効化の手順") {
+            stepRow(1, "下のボタンから設定アプリを開く")
+            stepRow(2, "一般 → キーボード → キーボード → 新しいキーボードを追加 → Sparkle Key")
+            stepRow(3, "追加した Sparkle Key を開いて「フルアクセスを許可」をON（クリップボード履歴に必要）")
+            stepRow(4, "どのアプリでも、キーボードの地球儀キーを押せば Sparkle Key に切り替わります")
+            HStack {
+                Spacer()
+                pillButton(title: "設定アプリを開く") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
                 }
             }
         }
     }
 
-    private func step(_ n: Int, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text("\(n).")
-                .fontWeight(.semibold)
+    private func stepRow(_ n: Int, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(n)")
+                .font(.caption.weight(.bold))
+                .foregroundColor(.white)
+                .frame(width: 22, height: 22)
+                .background(accent)
+                .clipShape(Circle())
             Text(text)
+                .font(.subheadline)
+            Spacer()
         }
     }
 
-    private var keyboardSettingsSection: some View {
-        Section(header: Text("キーボード設定"),
-                footer: Text("設定はキーボード側にも即反映されます。数字の並び方は、キーボードのツールバーからも切り替えられます。")) {
-            Picker("「123」の数字の並び", selection: $numberStyle) {
-                ForEach(NumberStyle.allCases) { style in
-                    Text(style.label).tag(style)
+    // MARK: - キーボード設定
+
+    private var keyboardCard: some View {
+        card(title: "キーボード設定") {
+            HStack(spacing: 12) {
+                iconChip("123.rectangle", Color(red: 0.85, green: 0.45, blue: 0.1))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("「123」の並び")
+                    Text("テンキーはフリック入力パッドになります")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
-            .pickerStyle(.segmented)
+            HStack(spacing: 4) {
+                ForEach(NumberStyle.allCases) { style in
+                    Button {
+                        numberStyle = style
+                    } label: {
+                        Text(style == .tenkey ? "テンキー（フリック）" : style.label)
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(numberStyle == style ? cardColor : Color.clear)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(4)
+            .background(fieldColor)
+            .clipShape(Capsule())
             .onChange(of: numberStyle) { _, newValue in
                 SharedStore.numberStyle = newValue
             }
 
-            Toggle("AI変換（Zenzai）を使う", isOn: $zenzaiEnabled)
+            Divider()
+            toggleRow(icon: "sparkles", tint: Color(red: 0.55, green: 0.36, blue: 0.96),
+                      title: "AI変換（Zenzai）を使う",
+                      subtitle: "ニューラル変換で文脈に合った候補を出します",
+                      isOn: $zenzaiEnabled)
                 .onChange(of: zenzaiEnabled) { _, newValue in
                     SharedStore.zenzaiEnabled = newValue
                 }
-            Toggle("自動変換（確定で残りをまとめて変換）", isOn: $autoConvert)
+            Divider()
+            toggleRow(icon: "text.badge.checkmark", tint: Color(red: 0.1, green: 0.55, blue: 0.35),
+                      title: "自動変換",
+                      subtitle: "確定キーで入力中の残りをまとめて変換します。OFFだとかなのまま確定",
+                      isOn: $autoConvert)
                 .onChange(of: autoConvert) { _, newValue in
                     SharedStore.autoConvertEnabled = newValue
                 }
-            Toggle("数字行を常に表示（英字の上）", isOn: $showNumberRow)
+            Divider()
+            toggleRow(icon: "rectangle.topthird.inset.filled", tint: Color(red: 0.1, green: 0.45, blue: 0.85),
+                      title: "数字行を常に表示",
+                      subtitle: "英字キーボードの上に数字の行を追加します",
+                      isOn: $showNumberRow)
                 .onChange(of: showNumberRow) { _, newValue in
                     SharedStore.showNumberRow = newValue
                 }
-
-            Toggle("クリップボードを自動で保存", isOn: $autoCapture)
+            Divider()
+            toggleRow(icon: "doc.on.clipboard", tint: Color(red: 0.85, green: 0.55, blue: 0.1),
+                      title: "クリップボードを自動で保存",
+                      subtitle: "キーボードを開くたびに今のクリップボードを履歴へ",
+                      isOn: $autoCapture)
                 .onChange(of: autoCapture) { _, newValue in
                     SharedStore.autoCaptureClipboard = newValue
                 }
-
-            HStack {
-                Text("学習した変換")
+            Divider()
+            HStack(spacing: 12) {
+                iconChip("brain", Color(red: 0.8, green: 0.3, blue: 0.5))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("学習した変換")
+                    Text("選んだ候補を覚えて、次から候補の先頭に出します")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
                 Spacer()
                 Text("\(learnedCount)件")
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
             if learnedCount > 0 {
-                Button("学習をリセット", role: .destructive) {
-                    SharedStore.clearLearnedWords()
-                    learnedCount = 0
+                HStack {
+                    Spacer()
+                    pillButton(title: "学習をリセット", filled: false) {
+                        SharedStore.clearLearnedWords()
+                        learnedCount = 0
+                    }
+                    .foregroundColor(.red)
                 }
             }
         }
     }
 
-    private var userDictSection: some View {
-        Section(header: Text("ユーザー辞書 (\(userDict.count)件)"),
-                footer: Text("登録した単語は、キーボードの変換候補の先頭に出ます。人名や固有名詞、よく使う言い回しの登録にどうぞ。読みはひらがなで入力してください（カタカナでも自動でひらがなになります）。")) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("読み")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .frame(width: 44, alignment: .leading)
+    // MARK: - ユーザー辞書
+
+    private var userDictCard: some View {
+        card(title: "ユーザー辞書（\(userDict.count)件）") {
+            Text("登録した単語は変換候補の先頭に出ます。読みはひらがなで入力してください（カタカナでも自動でひらがなになります）。")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("読み").font(.caption).foregroundColor(.secondary)
                     TextField("れもん", text: $newReading)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(10)
+                        .background(fieldColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                HStack {
-                    Text("単語")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .frame(width: 44, alignment: .leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("単語").font(.caption).foregroundColor(.secondary)
                     TextField("🍋", text: $newWord)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(10)
+                        .background(fieldColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                Picker("品詞", selection: $newPOS) {
-                    ForEach(UserDictPartOfSpeech.allCases) { pos in
-                        Text(pos.label).tag(pos)
+            }
+            HStack(spacing: 4) {
+                ForEach(UserDictPartOfSpeech.allCases) { pos in
+                    Button {
+                        newPOS = pos
+                    } label: {
+                        Text(pos.label)
+                            .font(.caption.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .background(newPOS == pos ? cardColor : Color.clear)
+                            .clipShape(Capsule())
                     }
+                    .buttonStyle(.plain)
                 }
-                .pickerStyle(.segmented)
-                Button("登録する") {
+            }
+            .padding(4)
+            .background(fieldColor)
+            .clipShape(Capsule())
+            HStack {
+                Spacer()
+                pillButton(title: "登録する") {
                     let reading = newReading.hiraganaNormalized()
                     let word = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !reading.isEmpty, !word.isEmpty else { return }
@@ -152,15 +334,18 @@ struct ContentView: View {
                     newWord = ""
                     reload()
                 }
+                .opacity(newReading.trimmingCharacters(in: .whitespaces).isEmpty
+                         || newWord.trimmingCharacters(in: .whitespaces).isEmpty ? 0.4 : 1)
                 .disabled(newReading.trimmingCharacters(in: .whitespaces).isEmpty
                           || newWord.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .padding(.vertical, 4)
             if userDict.isEmpty {
                 Text("まだ登録がありません")
+                    .font(.subheadline)
                     .foregroundColor(.secondary)
             }
             ForEach(userDict) { entry in
+                Divider()
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(entry.word)
@@ -169,85 +354,127 @@ struct ContentView: View {
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                }
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) {
+                    Button {
                         SharedStore.removeUserDictEntry(id: entry.id)
                         reload()
-                    } label: { Label("削除", systemImage: "trash") }
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
     }
 
-    private var clipboardSection: some View {
-        Section(header: Text("クリップボード履歴 (\(clipItems.count)件)"),
-                footer: Text("キーボードを開いたタイミングで、今のクリップボードが自動保存されます（フルアクセス許可時）。タップでコピー、左スワイプで削除。📌はピン留め（「ピン以外を消す」でも残ります）。")) {
-            HStack {
+    // MARK: - クリップボード
+
+    private var clipboardCard: some View {
+        card(title: "クリップボード履歴（\(clipItems.count)件）") {
+            Text("キーボードを開いたタイミングで自動保存されます（フルアクセス許可時）。タップでコピーできます。")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            HStack(spacing: 8) {
                 TextField("手動で追加するテキスト", text: $newClipText)
-                Button("追加") {
+                    .padding(10)
+                    .background(fieldColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                pillButton(title: "追加") {
                     guard !newClipText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                     SharedStore.addClipItem(text: newClipText)
                     newClipText = ""
                     reload()
                 }
+                .opacity(newClipText.isEmpty ? 0.4 : 1)
                 .disabled(newClipText.isEmpty)
             }
-            Button("今のクリップボードを保存") {
-                if let s = UIPasteboard.general.string {
-                    SharedStore.addClipItem(text: s)
-                    reload()
+            HStack {
+                pillButton(title: "今のクリップボードを保存", filled: false) {
+                    if let s = UIPasteboard.general.string {
+                        SharedStore.addClipItem(text: s)
+                        reload()
+                    }
                 }
+                Spacer()
             }
             if clipItems.isEmpty {
                 Text("まだ何も保存されていません")
+                    .font(.subheadline)
                     .foregroundColor(.secondary)
             }
             ForEach(clipItems) { item in
-                Button {
-                    UIPasteboard.general.string = item.text
-                } label: {
-                    HStack {
-                        if item.pinned {
-                            Text("📌")
+                Divider()
+                HStack(spacing: 8) {
+                    Button {
+                        UIPasteboard.general.string = item.text
+                    } label: {
+                        HStack(spacing: 6) {
+                            if item.pinned {
+                                Image(systemName: "pin.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+                            Text(item.text)
+                                .lineLimit(2)
+                                .foregroundColor(.primary)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
                         }
-                        Text(item.text)
-                            .lineLimit(2)
-                            .foregroundColor(.primary)
-                        Spacer()
                     }
-                }
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) {
-                        SharedStore.removeClipItem(id: item.id)
-                        reload()
-                    } label: { Label("削除", systemImage: "trash") }
+                    .buttonStyle(.plain)
                     Button {
                         SharedStore.togglePinClipItem(id: item.id)
                         reload()
-                    } label: { Label(item.pinned ? "ピン解除" : "ピン留め", systemImage: "pin") }
-                    .tint(.orange)
+                    } label: {
+                        Image(systemName: item.pinned ? "pin.slash" : "pin")
+                            .foregroundColor(.orange)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        SharedStore.removeClipItem(id: item.id)
+                        reload()
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             if !clipItems.isEmpty {
-                Button("ピン留め以外を全部消す", role: .destructive) {
-                    SharedStore.clearUnpinnedClipItems()
-                    reload()
+                HStack {
+                    Spacer()
+                    pillButton(title: "ピン留め以外を全部消す", filled: false) {
+                        SharedStore.clearUnpinnedClipItems()
+                        reload()
+                    }
+                    .foregroundColor(.red)
                 }
             }
         }
     }
 
-    private var notesSection: some View {
-        Section(header: Text("仕様メモ")) {
-            Text("・ 地球儀キーはタップで次のキーボード、長押しでキーボード一覧が出ます（iOS標準の動き）。")
-            Text("・ パスワード入力欄などでは、iOSの仕様で自動的に標準キーボードに切り替わります。")
-            Text("・ かな漢字変換は azooKey の変換エンジン（AzooKeyKanaKanjiConverter）です。文全体をまとめて変換でき、選んだ候補は学習されます。スペースで先頭候補を確定、候補をタップで選択、✓確定で文全体を変換しながら確定します。")
-            Text("・ バージョン 0.3.0")
-            .font(.footnote)
-            .foregroundColor(.secondary)
+    // MARK: - 仕様メモ
+
+    private var notesCard: some View {
+        card(title: "仕様メモ") {
+            noteLine("地球儀キーはタップで次のキーボード、長押しでキーボード一覧が出ます（iOS標準の動き）。")
+            noteLine("パスワード入力欄などでは、iOSの仕様で自動的に標準キーボードに切り替わります。")
+            noteLine("かな漢字変換は azooKey の変換エンジン＋Zenzai です。スペースで先頭候補を確定、候補タップで選択、変換中は確定キーで文全体を変換して確定します。")
+            noteLine("フリック入力は「123 → テンキー」で使えます。数字は各キーの長押し、濁点・小文字は句読点キーの下フリックです。")
         }
         .font(.subheadline)
+    }
+
+    private func noteLine(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("・").foregroundColor(.secondary)
+            Text(text).foregroundColor(.secondary)
+            Spacer()
+        }
+        .font(.footnote)
     }
 
     private func reload() {

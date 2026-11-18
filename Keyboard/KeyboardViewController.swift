@@ -14,6 +14,11 @@ enum KeyAction {
     case showNumbers
     case showSymbols
     case numberStyleToggle     // 数字モード：QWERTY数字 ⇄ テンキー
+    case toggleCursor
+    case cursorMove(Int)
+    case copyText
+    case cutText
+    case pasteText
     case toggleEmoji
     case emojiInsert(String)
     case emojiCategory(Int)
@@ -35,6 +40,16 @@ final class KBButton: UIButton {
     /// 押している間の背景色（標準キーボードのような押下フィードバック用）
     var normalBg: UIColor?
     var pressedBg: UIColor?
+    /// 右上の小さな長押しヒント文字（Gboard 式）
+    var subText: String?
+    var longPressFired = false
+    /// 丸薬型（カプセル）キー
+    var isPill = false
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if isPill { layer.cornerRadius = bounds.height / 2 }
+    }
     override var isHighlighted: Bool {
         didSet {
             guard let normalBg = normalBg, let pressedBg = pressedBg else { return }
@@ -43,8 +58,64 @@ final class KBButton: UIButton {
     }
 }
 
+/// フリック入力キー（中央＋上下左右の5値、指の移動方向で選ぶ）
+final class FlickButton: KBButton {
+    var values: [String?] = []
+    var onCommit: ((String) -> Void)?
+    var onPreview: ((String?) -> Void)?
+    var suppressCommit = false
+    private var startPoint: CGPoint = .zero
+    private var currentIndex = 0
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+        guard let t = touches.first else { return }
+        startPoint = t.location(in: self)
+        currentIndex = 0
+        suppressCommit = false
+        isHighlighted = true
+        onPreview?(values[0])
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesMoved(touches, with: event)
+        guard let t = touches.first else { return }
+        let p = t.location(in: self)
+        let dx = p.x - startPoint.x
+        let dy = p.y - startPoint.y
+        var idx = 0
+        if abs(dx) > 26 || abs(dy) > 26 {
+            idx = abs(dx) > abs(dy) ? (dx < 0 ? 1 : 3) : (dy < 0 ? 2 : 4)
+        }
+        if idx != currentIndex {
+            currentIndex = idx
+            onPreview?(values[idx] ?? values[0])
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesEnded(touches, with: event)
+        isHighlighted = false
+        onPreview?(nil)
+        if !suppressCommit, let v = values[currentIndex] ?? values[0] {
+            onCommit?(v)
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesCancelled(touches, with: event)
+        isHighlighted = false
+        onPreview?(nil)
+    }
+
+    func cancelPreview() {
+        onPreview?(nil)
+        isHighlighted = false
+    }
+}
+
 enum KBMode {
-    case letters, numbers, symbols, clipboard, emoji
+    case letters, numbers, symbols, clipboard, emoji, cursor
 }
 
 enum InputLang {
@@ -96,10 +167,29 @@ final class KeyboardViewController: UIInputViewController {
     private var emojiTabIsRecent = true
     private var emojiCategoryIndex = 0
 
+    /// テンキー（フリックパッド）が表示中か
+    private var flickActive: Bool {
+        mode == .numbers && SharedStore.numberStyle == .tenkey
+    }
+
+    private func flickPreview(_ button: KBButton, text: String?) {
+        guard let text else { popupView.isHidden = true; return }
+        popupLabel.text = text
+        let frame = button.convert(button.bounds, to: view)
+        let w = max(frame.width + 16, 46)
+        let h: CGFloat = 54
+        var x = frame.midX - w / 2
+        x = min(max(x, 2), view.bounds.width - w - 2)
+        let y = max(frame.minY - h - 2, 0)
+        popupView.frame = CGRect(x: x, y: y, width: w, height: h)
+        popupView.isHidden = false
+        view.bringSubviewToFront(popupView)
+    }
+
     /// 変換中は確定キーの表示を「確定」に変える（Gboard と同じ）
     private func updateReturnKeyLabel() {
         guard let b = returnKeyButton else { return }
-        let label = (lang == .kana && hasComposing) ? "確定" : returnLabel()
+        let label = ((lang == .kana || flickActive) && hasComposing) ? "確定" : returnLabel()
         if b.title(for: .normal) != label {
             b.setTitle(label, for: .normal)
         }
@@ -121,6 +211,18 @@ final class KeyboardViewController: UIInputViewController {
         popupView.frame = CGRect(x: x, y: y, width: w, height: h)
         popupView.isHidden = false
         view.bringSubviewToFront(popupView)
+    }
+
+    @objc private func keyLongPressed(_ gr: UILongPressGestureRecognizer) {
+        guard gr.state == .began, let b = gr.view as? KBButton, let sub = b.subText else { return }
+        b.longPressFired = true
+        if let fb = b as? FlickButton {
+            fb.suppressCommit = true
+            fb.cancelPreview()
+        }
+        popupLabel.text = sub
+        insertTextSmart(sub)
+        tapFeedback()
     }
 
     @objc private func hideKeyPopup() {
@@ -297,9 +399,14 @@ final class KeyboardViewController: UIInputViewController {
             title: nil,
             action: .toggleEmoji))
 
+        toolbar.addArrangedSubview(toolButton(
+            symbol: mode == .cursor ? "keyboard" : "arrow.left.and.right",
+            title: nil,
+            action: .toggleCursor))
+
         // クリップボードボタンの隣が変換候補の表示場所
         toolbar.addArrangedSubview(stripScroll)
-        stripScroll.isHidden = (mode != .letters)
+        stripScroll.isHidden = (mode != .letters) && !flickActive
 
         if mode == .numbers {
             toolbar.addArrangedSubview(toolButton(
@@ -335,12 +442,14 @@ final class KeyboardViewController: UIInputViewController {
         case .letters:
             base = SharedStore.showNumberRow ? 318 : 276
         case .numbers:
-            base = SharedStore.numberStyle == .tenkey ? 308 : 276
+            base = SharedStore.numberStyle == .tenkey ? 332 : 276
         case .symbols:
             base = 276
         case .clipboard:
             base = 312
         case .emoji:
+            base = 312
+        case .cursor:
             base = 312
         }
         // 候補バーはツールバーの中に入ったので、高さはモードの基本値だけ。
@@ -537,18 +646,22 @@ final class KeyboardViewController: UIInputViewController {
         var weight: CGFloat = 1
         var symbol: String? = nil
         var small: Bool = false
-        init(_ label: String, _ action: KeyAction, weight: CGFloat = 1, symbol: String? = nil, small: Bool = false) {
+        var sub: String? = nil
+        var pill: Bool = false
+        init(_ label: String, _ action: KeyAction, weight: CGFloat = 1, symbol: String? = nil, small: Bool = false, sub: String? = nil, pill: Bool = false) {
             self.label = label
             self.action = action
             self.weight = weight
             self.symbol = symbol
             self.small = small
+            self.sub = sub
+            self.pill = pill
         }
     }
 
     private func rebuildContent() {
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        contentStack.distribution = (mode == .clipboard || mode == .emoji) ? .fill : .fillEqually
+        contentStack.distribution = (mode == .clipboard || mode == .emoji || mode == .cursor) ? .fill : .fillEqually
         switch mode {
         case .letters: buildLetters()
         case .numbers:
@@ -556,6 +669,7 @@ final class KeyboardViewController: UIInputViewController {
         case .symbols: buildSymbols()
         case .clipboard: buildClipboard()
         case .emoji: buildEmoji()
+        case .cursor: buildCursor()
         }
     }
 
@@ -596,9 +710,14 @@ final class KeyboardViewController: UIInputViewController {
             isSpecial = true
         }
         if case .returnKey = spec.action {
-            b.backgroundColor = accentKeyColor()
-            b.setTitleColor(accentTitleColor(), for: .normal)
+            b.backgroundColor = pillKeyColor()
+            b.setTitleColor(pillTitleColor(), for: .normal)
             b.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+            b.isPill = true
+        } else if spec.pill {
+            b.backgroundColor = pillKeyColor()
+            b.setTitleColor(pillTitleColor(), for: .normal)
+            b.isPill = true
         } else if case .space = spec.action {
             b.backgroundColor = normalKeyColor()
             b.setTitleColor(.secondaryLabel, for: .normal)
@@ -607,8 +726,8 @@ final class KeyboardViewController: UIInputViewController {
             b.backgroundColor = isSpecial ? specialKeyColor() : normalKeyColor()
         }
         b.normalBg = b.backgroundColor
-        if case .returnKey = spec.action {
-            b.pressedBg = pressedAccentKeyColor()
+        if case .returnKey = spec.action || spec.pill {
+            b.pressedBg = pressedPillKeyColor()
         } else {
             b.pressedBg = isSpecial ? pressedSpecialKeyColor() : pressedKeyColor()
         }
@@ -619,6 +738,24 @@ final class KeyboardViewController: UIInputViewController {
             // Gboard 風: 押した文字をキーの上に大きくプレビューする
             b.addTarget(self, action: #selector(showKeyPopup(_:)), for: .touchDown)
             b.addTarget(self, action: #selector(hideKeyPopup), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        }
+        if let sub = spec.sub {
+            // Gboard 風: 右上に長押しヒント、長押しでその文字を入力
+            b.subText = sub
+            let hint = UILabel()
+            hint.text = sub
+            hint.font = .systemFont(ofSize: 10)
+            hint.textColor = .secondaryLabel
+            hint.isUserInteractionEnabled = false
+            hint.translatesAutoresizingMaskIntoConstraints = false
+            b.addSubview(hint)
+            NSLayoutConstraint.activate([
+                hint.topAnchor.constraint(equalTo: b.topAnchor, constant: 3),
+                hint.trailingAnchor.constraint(equalTo: b.trailingAnchor, constant: -5),
+            ])
+            let lp = UILongPressGestureRecognizer(target: self, action: #selector(keyLongPressed(_:)))
+            lp.minimumPressDuration = 0.35
+            b.addGestureRecognizer(lp)
         }
         if case .globe = spec.action {
             // 地球儀：タップで次のキーボード、長押しで一覧（iOS標準の仕組み）
@@ -683,20 +820,44 @@ final class KeyboardViewController: UIInputViewController {
     private func pressedSpecialKeyColor() -> UIColor {
         UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.16, green: 0.16, blue: 0.18, alpha: 1)
-                : UIColor(red: 0.72, green: 0.75, blue: 0.79, alpha: 1)
+                ? UIColor(red: 0.33, green: 0.33, blue: 0.36, alpha: 1)
+                : UIColor(red: 0.62, green: 0.74, blue: 0.93, alpha: 1)
         }
     }
 
     private func specialKeyColor() -> UIColor {
         UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.118, green: 0.118, blue: 0.125, alpha: 1)
-                : UIColor(red: 0.84, green: 0.855, blue: 0.878, alpha: 1)
+                ? UIColor(red: 0.27, green: 0.27, blue: 0.29, alpha: 1)
+                : UIColor(red: 0.78, green: 0.86, blue: 0.97, alpha: 1)
         }
     }
 
     /// 確定キー用のアクセント（Gboard の検索/確定キーと同じ青）
+    private func pillKeyColor() -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.82, green: 0.82, blue: 0.90, alpha: 1)
+                : UIColor(red: 0.76, green: 0.85, blue: 0.98, alpha: 1)
+        }
+    }
+
+    private func pressedPillKeyColor() -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.70, green: 0.70, blue: 0.80, alpha: 1)
+                : UIColor(red: 0.62, green: 0.76, blue: 0.96, alpha: 1)
+        }
+    }
+
+    private func pillTitleColor() -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.13, green: 0.13, blue: 0.17, alpha: 1)
+                : UIColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1)
+        }
+    }
+
     private func accentKeyColor() -> UIColor {
         UIColor { traits in
             traits.userInterfaceStyle == .dark
@@ -723,7 +884,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func bottomRow(firstLabel: String, firstAction: KeyAction, includeLang: Bool = false) -> UIStackView {
         var specs: [Spec] = [
-            Spec(firstLabel, firstAction, weight: 1.5, small: true),
+            Spec(firstLabel, firstAction, weight: 1.5, small: true, pill: true),
             Spec("", .globe, weight: 1.0, symbol: "globe"),
         ]
         if includeLang {
@@ -759,26 +920,32 @@ final class KeyboardViewController: UIInputViewController {
                 "1234567890".map { Spec(String($0), .text(String($0)), small: true) }))
         }
         let upper = shiftState != .off
-        func letterRow(_ s: String) -> UIStackView {
-            makeRow(s.map { ch in
+        // 右上の小さな文字は長押しで入力できる（Gboard と同じ配置）
+        let subs1 = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+        let subs2 = ["@", "#", "$", "-", "&", "-", "+", "(", ")"]
+        let subs3 = ["*", "\"", "'", ":", ";", "!", "?"]
+        func letterRow(_ s: String, subs: [String]) -> UIStackView {
+            makeRow(s.enumerated().map { i, ch in
                 let label = upper ? String(ch).uppercased() : String(ch)
-                return Spec(label, .text(String(ch)))
+                return Spec(label, .text(String(ch)), sub: subs[i])
             })
         }
-        contentStack.addArrangedSubview(letterRow("qwertyuiop"))
+        contentStack.addArrangedSubview(letterRow("qwertyuiop", subs: subs1))
         if lang == .kana {
             // JIS 配列と同じく L の隣に長音キー（コンピュータ等の入力用）
-            var row2 = "asdfghjkl".map { ch -> Spec in
+            var row2 = "asdfghjkl".enumerated().map { i, ch -> Spec in
                 let label = upper ? String(ch).uppercased() : String(ch)
-                return Spec(label, .text(String(ch)))
+                return Spec(label, .text(String(ch)), sub: subs2[i])
             }
             row2.append(Spec("ー", .text("-")))
             contentStack.addArrangedSubview(makeRow(row2))
         } else {
-            contentStack.addArrangedSubview(letterRow("asdfghjkl"))
+            contentStack.addArrangedSubview(letterRow("asdfghjkl", subs: subs2))
         }
         var third: [Spec] = [Spec("", .shift, weight: 1.4, symbol: shiftState == .off ? "shift" : (shiftState == .locked ? "capslock.fill" : "shift.fill"))]
-        third += "zxcvbnm".map { Spec(upper ? String($0).uppercased() : String($0), .text(String($0))) }
+        third += "zxcvbnm".enumerated().map { i, ch in
+            Spec(upper ? String(ch).uppercased() : String(ch), .text(String(ch)), sub: subs3[i])
+        }
         third.append(Spec("", .backspace, weight: 1.4, symbol: "delete.left"))
         contentStack.addArrangedSubview(makeRow(third))
         contentStack.addArrangedSubview(bottomRow(firstLabel: "?123", firstAction: .showNumbers, includeLang: true))
@@ -796,33 +963,160 @@ final class KeyboardViewController: UIInputViewController {
         contentStack.addArrangedSubview(bottomRow(firstLabel: "ABC", firstAction: .showLetters))
     }
 
+    private func makeFlickKey(_ values: [String?], sub: String?, title: String? = nil, fontSize: CGFloat = 24) -> FlickButton {
+        let b = FlickButton(type: .system)
+        b.values = values
+        b.setTitle(title ?? values[0] ?? "", for: .normal)
+        b.setTitleColor(.label, for: .normal)
+        b.titleLabel?.font = .systemFont(ofSize: fontSize)
+        b.backgroundColor = normalKeyColor()
+        b.normalBg = b.backgroundColor
+        b.pressedBg = pressedKeyColor()
+        b.layer.cornerRadius = 10
+        b.onCommit = { [weak self] v in self?.flickInput(v) }
+        b.onPreview = { [weak self, weak b] text in
+            guard let self, let b else { return }
+            self.flickPreview(b, text: text)
+        }
+        if let sub {
+            b.subText = sub
+            let hint = UILabel()
+            hint.text = sub
+            hint.font = .systemFont(ofSize: 10)
+            hint.textColor = .secondaryLabel
+            hint.isUserInteractionEnabled = false
+            hint.translatesAutoresizingMaskIntoConstraints = false
+            b.addSubview(hint)
+            NSLayoutConstraint.activate([
+                hint.topAnchor.constraint(equalTo: b.topAnchor, constant: 3),
+                hint.trailingAnchor.constraint(equalTo: b.trailingAnchor, constant: -5),
+            ])
+            let lp = UILongPressGestureRecognizer(target: self, action: #selector(keyLongPressed(_:)))
+            lp.minimumPressDuration = 0.35
+            b.addGestureRecognizer(lp)
+        }
+        return b
+    }
+
+    /// テンキー = フリック入力パッド（Gboard の12キー配列、Aqua のスクショ準拠）
     private func buildTenkey() {
-        contentStack.addArrangedSubview(makeRow([
-            Spec("1", .text("1")), Spec("2", .text("2")), Spec("3", .text("3")),
-            Spec("", .backspace, symbol: "delete.left"),
+        let pad = UIStackView()
+        pad.axis = .horizontal
+        pad.spacing = 6
+        pad.distribution = .fill
+
+        // 左レール: 取消 / ◀ / 絵文字・記号 / QWERTY へ
+        let left = UIStackView()
+        left.axis = .vertical
+        left.spacing = 6
+        left.distribution = .fillEqually
+        left.addArrangedSubview(makeKey(Spec("", .clearComposing, symbol: "arrow.uturn.backward")))
+        left.addArrangedSubview(makeKey(Spec("", .cursorMove(-1), symbol: "chevron.left")))
+        left.addArrangedSubview(makeKey(Spec("☺記", .showSymbols, small: true)))
+        left.addArrangedSubview(makeKey(Spec("あa1", .showLetters, small: true)))
+
+        // 中央: 3列×4行のフリックキー（値は [中央, 左, 上, 右, 下]）
+        let center = UIStackView()
+        center.axis = .vertical
+        center.spacing = 6
+        center.distribution = .fillEqually
+        func flickRow(_ keys: [FlickButton]) -> UIStackView {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.spacing = 6
+            row.distribution = .fillEqually
+            keys.forEach { row.addArrangedSubview($0) }
+            return row
+        }
+        center.addArrangedSubview(flickRow([
+            makeFlickKey(["あ", "い", "う", "え", "お"], sub: "1"),
+            makeFlickKey(["か", "き", "く", "け", "こ"], sub: "2"),
+            makeFlickKey(["さ", "し", "す", "せ", "そ"], sub: "3"),
         ]))
-        contentStack.addArrangedSubview(makeRow([
-            Spec("4", .text("4")), Spec("5", .text("5")), Spec("6", .text("6")),
-            Spec("+", .text("+")),
+        center.addArrangedSubview(flickRow([
+            makeFlickKey(["た", "ち", "つ", "て", "と"], sub: "4"),
+            makeFlickKey(["な", "に", "ぬ", "ね", "の"], sub: "5"),
+            makeFlickKey(["は", "ひ", "ふ", "へ", "ほ"], sub: "6"),
         ]))
-        contentStack.addArrangedSubview(makeRow([
-            Spec("7", .text("7")), Spec("8", .text("8")), Spec("9", .text("9")),
-            Spec("-", .text("-")),
+        center.addArrangedSubview(flickRow([
+            makeFlickKey(["ま", "み", "む", "め", "も"], sub: "7"),
+            makeFlickKey(["や", "「", "ゆ", "」", "よ"], sub: "8"),
+            makeFlickKey(["ら", "り", "る", "れ", "ろ"], sub: "9"),
         ]))
-        contentStack.addArrangedSubview(makeRow([
-            Spec("#+=", .showSymbols, small: true),
-            Spec(",", .text(",")),
-            Spec("0", .text("0")),
-            Spec(".", .text(".")),
-        ]))
-        let lastRow = makeRow([
-            Spec("ABC", .showLetters, weight: 1.5, small: true),
-            Spec("", .globe, weight: 1.0, symbol: "globe"),
-            Spec(lang == .kana ? "日本語" : "English", .space, weight: 3.6, small: true),
-            Spec(returnLabel(), .returnKey, weight: 1.6, small: true),
-        ])
-        returnKeyButton = lastRow.arrangedSubviews.last as? KBButton
-        contentStack.addArrangedSubview(lastRow)
+        // 最下段: 地球儀 / わ / 句読点（下フリックで濁点・小文字）
+        let bottomCenter = UIStackView()
+        bottomCenter.axis = .horizontal
+        bottomCenter.spacing = 6
+        bottomCenter.distribution = .fillEqually
+        bottomCenter.addArrangedSubview(makeKey(Spec("", .globe, symbol: "globe")))
+        bottomCenter.addArrangedSubview(makeFlickKey(["わ", "ー", "を", "ゎ", "ん"], sub: "0"))
+        bottomCenter.addArrangedSubview(makeFlickKey(["、", "。", "？", "！", "゛"], sub: nil, title: "、。？！", fontSize: 13))
+        center.addArrangedSubview(bottomCenter)
+
+        // 右レール: ⌫ / ▶ / スペース / 確定
+        let right = UIStackView()
+        right.axis = .vertical
+        right.spacing = 6
+        right.distribution = .fillEqually
+        right.addArrangedSubview(makeKey(Spec("", .backspace, symbol: "delete.left")))
+        right.addArrangedSubview(makeKey(Spec("", .cursorMove(1), symbol: "chevron.right")))
+        right.addArrangedSubview(makeKey(Spec("␣", .space)))
+        let returnButton = makeKey(Spec(returnLabel(), .returnKey, small: true))
+        returnKeyButton = returnButton
+        right.addArrangedSubview(returnButton)
+
+        pad.addArrangedSubview(left)
+        pad.addArrangedSubview(center)
+        pad.addArrangedSubview(right)
+        left.widthAnchor.constraint(equalTo: pad.widthAnchor, multiplier: 0.17).isActive = true
+        right.widthAnchor.constraint(equalTo: pad.widthAnchor, multiplier: 0.17).isActive = true
+        contentStack.addArrangedSubview(pad)
+    }
+
+    // MARK: フリック入力
+
+    private func flickInput(_ value: String) {
+        // ローマ字の未確定分が残っていたら先に流し込む
+        if !pendingRomaji.isEmpty {
+            let r = RomajiKana.process(pendingRomaji, flush: true)
+            composingKana += r.committed
+            pendingRomaji = r.pending
+        }
+        switch value {
+        case "、", "。", "？", "！":
+            if hasComposing { commitConvertedAll() }
+            textDocumentProxy.insertText(value)
+        case "゛":
+            applyDakutenTransform()
+        default:
+            composingKana += value
+            refreshCandidates()
+        }
+        tapFeedback()
+    }
+
+    /// 濁点・半濁点・小文字の付け外し（入力中の最後の文字に適用、循環）
+    private func applyDakutenTransform() {
+        guard !composingKana.isEmpty else { return }
+        let last = String(composingKana.last!)
+        let cycles: [[String]] = [
+            ["か", "が"], ["き", "ぎ"], ["く", "ぐ"], ["け", "げ"], ["こ", "ご"],
+            ["さ", "ざ"], ["し", "じ"], ["す", "ず"], ["せ", "ぜ"], ["そ", "ぞ"],
+            ["た", "だ"], ["ち", "ぢ"], ["つ", "づ", "っ"], ["て", "で"], ["と", "ど"],
+            ["は", "ば", "ぱ"], ["ひ", "び", "ぴ"], ["ふ", "ぶ", "ぷ"], ["へ", "べ", "ぺ"], ["ほ", "ぼ", "ぽ"],
+            ["う", "ゔ"],
+            ["あ", "ぁ"], ["い", "ぃ"], ["え", "ぇ"], ["お", "ぉ"],
+            ["や", "ゃ"], ["ゆ", "ゅ"], ["よ", "ょ"], ["わ", "ゎ"],
+        ]
+        for cycle in cycles {
+            if let i = cycle.firstIndex(of: last) {
+                let next = cycle[(i + 1) % cycle.count]
+                composingKana.removeLast()
+                composingKana += next
+                refreshCandidates()
+                return
+            }
+        }
     }
 
     private func buildSymbols() {
@@ -918,6 +1212,29 @@ final class KeyboardViewController: UIInputViewController {
         }
         let bottom = bottomRow(firstLabel: "ABC", firstAction: .showLetters)
         bottom.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        contentStack.addArrangedSubview(bottom)
+    }
+
+    // MARK: カーソル移動・テキスト編集パネル
+
+    private func buildCursor() {
+        let moveRow = makeRow([
+            Spec("←", .cursorMove(-1)),
+            Spec("→", .cursorMove(1)),
+        ])
+        contentStack.addArrangedSubview(moveRow)
+
+        let editRow = makeRow([
+            Spec("コピー", .copyText, small: true),
+            Spec("カット", .cutText, small: true),
+            Spec("ペースト", .pasteText, small: true),
+            Spec("", .backspace, symbol: "delete.left"),
+        ])
+        editRow.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        contentStack.addArrangedSubview(editRow)
+
+        let bottom = bottomRow(firstLabel: "ABC", firstAction: .showLetters)
+        bottom.heightAnchor.constraint(equalToConstant: 48).isActive = true
         contentStack.addArrangedSubview(bottom)
     }
 
@@ -1032,6 +1349,10 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: アクション処理
 
     @objc private func keyTapped(_ sender: KBButton) {
+        if sender.longPressFired {
+            sender.longPressFired = false
+            return
+        }
         guard let action = sender.action else { return }
         if case .candidate = action, let cand = sender.candidateValue {
             // 表示されていた候補そのものを確定する（リストの再取得で化けない）
@@ -1079,7 +1400,7 @@ final class KeyboardViewController: UIInputViewController {
                 suppressNextSpaceTap = false
                 return
             }
-            if lang == .kana && mode == .letters && hasComposing {
+            if lang == .kana && (mode == .letters || flickActive) && hasComposing {
                 // 変換：先頭候補を確定（残りは入力中のまま）。
                 // 自動変換 OFF のときはかなのまま全部確定する
                 if SharedStore.autoConvertEnabled { commitCandidate(at: 0) }
@@ -1099,7 +1420,7 @@ final class KeyboardViewController: UIInputViewController {
                 textDocumentProxy.insertText(" ")
             }
         case .returnKey:
-            if lang == .kana && hasComposing {
+            if (lang == .kana || flickActive) && hasComposing {
                 // 変換中は「確定」: 確定するだけ（改行しない）
                 if SharedStore.autoConvertEnabled { commitConvertedAll() }
                 else { commitRawAll() }
@@ -1128,6 +1449,25 @@ final class KeyboardViewController: UIInputViewController {
         case .numberStyleToggle:
             SharedStore.numberStyle = SharedStore.numberStyle == .qwerty ? .tenkey : .qwerty
             rebuildAll()
+        case .toggleCursor:
+            mode = (mode == .cursor) ? .letters : .cursor
+            rebuildAll()
+        case .cursorMove(let n):
+            textDocumentProxy.adjustTextPosition(byCharacterOffset: n)
+        case .copyText:
+            if let sel = textDocumentProxy.selectedText, !sel.isEmpty {
+                UIPasteboard.general.string = sel
+            }
+        case .cutText:
+            if let sel = textDocumentProxy.selectedText, !sel.isEmpty {
+                UIPasteboard.general.string = sel
+                textDocumentProxy.insertText("")
+            }
+        case .pasteText:
+            if hasFullAccess, let str = UIPasteboard.general.string, !str.isEmpty {
+                if hasComposing { commitRawAll() }
+                textDocumentProxy.insertText(str)
+            }
         case .toggleEmoji:
             mode = (mode == .emoji) ? .letters : .emoji
             rebuildAll()
@@ -1189,7 +1529,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func deleteBackwardSmart() {
-        if lang == .kana && mode == .letters && hasComposing {
+        if lang == .kana && (mode == .letters || flickActive) && hasComposing {
             if !pendingRomaji.isEmpty {
                 pendingRomaji.removeLast()
             } else {
