@@ -366,6 +366,7 @@
 		00000000000000000000002E /* Debug (keyboard) */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				SWIFT_OBJC_INTEROP_MODE = Cxx;
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = Keyboard/RinhaBoardKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -390,6 +391,7 @@
 		00000000000000000000002F /* Release (keyboard) */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				SWIFT_OBJC_INTEROP_MODE = Cxx;
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = Keyboard/RinhaBoardKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
