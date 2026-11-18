@@ -608,12 +608,19 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// 候補バーの再構築（中身が前回と同じなら何もしない）
+    /// 変換中（候補表示中）はツールバー左のアイコン類を隠し、候補バーを全幅にする
+    private func updateToolbarIconVisibility() {
+        let stripActive = hasComposing || !englishSuggestions.isEmpty
+        for b in toolbarButtons { b.isHidden = stripActive }
+    }
+
     private func applyStrip() {
         if mode == .letters && lang == .en {
             let signature = "EN\u{1}" + englishSuggestions.joined(separator: "\u{2}")
             guard signature != lastStripSignature else { return }
             lastStripSignature = signature
             rebuildStrip()
+            updateToolbarIconVisibility()
             return
         }
         let eff = effectiveComposing()
@@ -622,6 +629,7 @@ final class KeyboardViewController: UIInputViewController {
         let wasEmpty = (lastStripSignature == nil) || (lastStripSignature?.hasPrefix("\u{1}") ?? false)
         lastStripSignature = signature
         rebuildStrip()
+        updateToolbarIconVisibility()
         if wasEmpty && !eff.isEmpty {
             stripScroll.setContentOffset(.zero, animated: false)
         }
@@ -1485,7 +1493,9 @@ final class KeyboardViewController: UIInputViewController {
                           y: (idx / twemojiCols) * twemojiCell,
                           width: twemojiCell, height: twemojiCell)
         guard let crop = cg.cropping(to: rect) else { return nil }
+        // .system ボタンは画像をテンプレートとして tint で塗るので、原画指定が必須
         let image = UIImage(cgImage: crop, scale: sprite.scale, orientation: .up)
+            .withRenderingMode(.alwaysOriginal)
         twemojiCache[emoji] = image
         return image
     }

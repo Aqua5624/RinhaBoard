@@ -103,7 +103,7 @@ private final class AzooKeyEngine {
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
             zenzaiMode: useZenzai ? zenzaiMode() : .off,
-            metadata: .init(versionString: "Sparkle Key 0.7.0")
+            metadata: .init(versionString: "Sparkle Key 0.7.1")
         )
         if useZenzai { cachedZenzaiOptions = options } else { cachedOptions = options }
         return options
