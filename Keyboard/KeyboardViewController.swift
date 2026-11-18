@@ -33,7 +33,7 @@ enum KeyAction {
     case clearComposing        // 入力中を破棄
 }
 
-final class KBButton: UIButton {
+class KBButton: UIButton {
     var action: KeyAction?
     /// 候補ボタン用：表示した候補そのもの（確定時にリストを引き直さない）
     var candidateValue: ConversionCandidate?
