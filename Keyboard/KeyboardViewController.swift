@@ -138,6 +138,8 @@ final class KeyboardViewController: UIInputViewController {
     /// かなモードで変換確定前のかな（例 "きょうは"）。文書にはまだ入っていない
     private var composingKana: String = ""
     private var currentCandidates: [ConversionCandidate] = []
+    /// 自分がマーク付きテキストを表示中かどうか（unmark の誤確定を防ぐ）
+    private var markedTextShown = false
     private var lastShiftTapAt: Date?
 
     private let toolbar = UIStackView()
@@ -483,15 +485,28 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: マーク付きテキスト（入力中を入力欄に表示する）
 
-    /// 入力中のかなを入力欄にマーク付きテキスト（下線表示）として反映する。
-    /// これが無いと、確定するまで入力欄に何も出なくて不安になる。
+    /// 入力欄に表示する変換中テキスト。未確定のローマ字（n、sh など）は
+    /// ん等に化けさせずローマ字のまま見せる（Gboard と同じ挙動）。
+    /// 変換エンジンに渡す文字列は effectiveComposing()（flush 済み）を使う。
+    private func displayComposing() -> String {
+        let r = RomajiKana.process(pendingRomaji, flush: false)
+        return composingKana + r.committed + r.pending
+    }
+
+    /// 入力中テキストを入力欄にマーク付きテキスト（下線表示）として反映する。
     private func updateMarkedText() {
         if composingActive && hasComposing {
-            let eff = effectiveComposing()
+            let disp = displayComposing()
             textDocumentProxy.setMarkedText(
-                eff, selectedRange: NSRange(location: eff.count, length: 0))
-        } else {
+                disp, selectedRange: NSRange(location: disp.count, length: 0))
+            markedTextShown = true
+        } else if markedTextShown {
+            // unmarkText() 単体だと表示中のマーク文字列がそのまま「確定」されて
+            // 残ってしまう（最後の1文字を消したのに消えず確定される／同じ語が
+            // 二重に出る原因）。空文字にしてからマークを外す。
+            textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
             textDocumentProxy.unmarkText()
+            markedTextShown = false
         }
     }
 
@@ -500,6 +515,7 @@ final class KeyboardViewController: UIInputViewController {
     private func insertCommitted(_ text: String) {
         textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
         textDocumentProxy.unmarkText()
+        markedTextShown = false
         if !text.isEmpty {
             textDocumentProxy.insertText(text)
         }
@@ -1603,6 +1619,7 @@ final class KeyboardViewController: UIInputViewController {
             // マーク付きテキストごと消す（unmark だけだと文字が残ってしまう）
             textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
             textDocumentProxy.unmarkText()
+            markedTextShown = false
             composingKana = ""
             pendingRomaji = ""
             refreshCandidates()
