@@ -22,10 +22,11 @@ jobs:
           cd zenz-check
           swift build -c release 2>&1 | tail -3
           cp .build/release/zenzcheck /tmp/zenzcheck
-          FW=$(find .build -name "llama.framework" -type d | head -1)
+          find .build -name "llama.framework" -type d
+          FW=$(find .build -path "*macos*" -name "llama.framework" -type d | head -1)
           echo "framework: $FW"
           cp -R "$FW" /tmp/llama.framework
-          ls /tmp/llama.framework
+          ls -la /tmp/llama.framework /tmp/llama.framework/Versions/Current/ 2>/dev/null | head -12
 
       - name: Run per model (separate processes)
         run: |
