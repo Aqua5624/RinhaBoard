@@ -219,6 +219,11 @@ enum SharedStore {
 
     private static let keyUserDict = "rb_userDictionary_v1"
 
+    /// ユーザー辞書の保存データそのもの（変更検知用）
+    static func userDictRawData() -> Data? {
+        defaults.data(forKey: keyUserDict)
+    }
+
     static func loadUserDict() -> [UserDictEntry] {
         guard let data = defaults.data(forKey: keyUserDict),
               let items = try? JSONDecoder().decode([UserDictEntry].self, from: data) else {

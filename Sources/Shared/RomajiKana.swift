@@ -9,6 +9,15 @@ enum RomajiKana {
         "sha": "しゃ", "shu": "しゅ", "sho": "しょ",
         "cha": "ちゃ", "chu": "ちゅ", "cho": "ちょ",
         "jya": "じゃ", "jyu": "じゅ", "jyo": "じょ",
+        "sya": "しゃ", "syu": "しゅ", "syo": "しょ",
+        "cya": "ちゃ", "cyu": "ちゅ", "cyo": "ちょ",
+        "tya": "ちゃ", "tyu": "ちゅ", "tyo": "ちょ",
+        "zya": "じゃ", "zyu": "じゅ", "zyo": "じょ",
+        "she": "しぇ", "che": "ちぇ",
+        "thi": "てぃ", "dhi": "でぃ",
+        "fya": "ふゃ", "fyu": "ふゅ", "fyo": "ふょ",
+        "xya": "ゃ", "xyu": "ゅ", "xyo": "ょ",
+        "lya": "ゃ", "lyu": "ゅ", "lyo": "ょ",
         "kya": "きゃ", "kyu": "きゅ", "kyo": "きょ",
         "nya": "にゃ", "nyu": "にゅ", "nyo": "にょ",
         "hya": "ひゃ", "hyu": "ひゅ", "hyo": "ひょ",
@@ -34,9 +43,14 @@ enum RomajiKana {
         "ba": "ば", "bi": "び", "bu": "ぶ", "be": "べ", "bo": "ぼ",
         "pa": "ぱ", "pi": "ぴ", "pu": "ぷ", "pe": "ぺ", "po": "ぽ",
         "zi": "じ",
+        "tu": "つ", "ti": "ち", "si": "し", "hu": "ふ",
+        "fa": "ふぁ", "fi": "ふぃ", "fe": "ふぇ", "fo": "ふぉ",
+        "va": "ゔぁ", "vi": "ゔぃ", "vu": "ゔ", "ve": "ゔぇ", "vo": "ゔぉ",
+        "wi": "うぃ", "we": "うぇ", "je": "じぇ",
+        "xwa": "ゎ", "lwa": "ゎ",
         "xa": "ぁ", "xi": "ぃ", "xu": "ぅ", "xe": "ぇ", "xo": "ぉ",
         "la": "ぁ", "li": "ぃ", "lu": "ぅ", "le": "ぇ", "lo": "ぉ",
-        "xtu": "っ", "ltu": "っ",
+        "xtu": "っ", "ltu": "っ", "xtsu": "っ", "ltsu": "っ",
         // 1文字
         "a": "あ", "i": "い", "u": "う", "e": "え", "o": "お",
         "-": "ー",
@@ -99,7 +113,7 @@ enum RomajiKana {
             }
             // 最長一致で変換
             var matched = false
-            for len in [3, 2, 1] {
+            for len in [4, 3, 2, 1] {
                 guard rest.count >= len else { continue }
                 let key = String(rest.prefix(len))
                 if let kana = table[key] {

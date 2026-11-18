@@ -21,18 +21,25 @@ struct ConversionCandidate {
 /// - 選択された候補は setCompletedData でエンジンの学習にも伝える
 enum KanjiConverter {
     private static let engine = AzooKeyEngine()
+    private static let lock = NSLock()
 
     static func candidates(for composing: String) -> [ConversionCandidate] {
-        engine.candidates(for: composing)
+        lock.lock()
+        defer { lock.unlock() }
+        return engine.candidates(for: composing)
     }
 
     /// 初回変換の重さ（辞書読み込み等）をキーボード表示直後に済ませておく
     static func warmUp() {
+        lock.lock()
+        defer { lock.unlock() }
         _ = engine.candidates(for: "あい")
     }
 
     /// 候補が選択・確定されたことをエンジン（学習）に伝える
     static func notifySelected(_ candidate: ConversionCandidate) {
+        lock.lock()
+        defer { lock.unlock() }
         engine.notifySelected(candidate)
     }
 
@@ -49,6 +56,9 @@ enum KanjiConverter {
 private final class AzooKeyEngine {
     private let converter = KanaKanjiConverter.withDefaultDictionary()
     private var importedUserDictSignature: String = ""
+    private var cachedOptions: ConvertRequestOptions?
+    private var cachedDictRaw: Data?
+    private var cachedEntries: [UserDictEntry] = []
 
     init() {
         reloadUserDictionary()
@@ -57,18 +67,19 @@ private final class AzooKeyEngine {
     // MARK: オプション
 
     /// 学習・ユーザ辞書データの保存先（App Group が使えれば共有、無ければ拡張の書類フォルダ）
-    private func storageDirectory() -> URL {
+    private lazy var storageDir: URL = {
         let base = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: SharedStore.appGroupID)
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let dir = base.appendingPathComponent("AzooKeyData", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
-    }
+    }()
 
     private func makeOptions() -> ConvertRequestOptions {
-        let dir = storageDirectory()
-        return ConvertRequestOptions(
+        if let cachedOptions = cachedOptions { return cachedOptions }
+        let dir = storageDir
+        let options = ConvertRequestOptions(
             N_best: 10,
             requireJapanesePrediction: .autoMix,
             requireEnglishPrediction: .disabled,
@@ -83,14 +94,26 @@ private final class AzooKeyEngine {
             sharedContainerURL: dir,
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
-            metadata: .init(versionString: "Sparkle Key 0.3.2")
+            metadata: .init(versionString: "Sparkle Key 0.3.3")
         )
+        cachedOptions = options
+        return options
+    }
+
+    /// ユーザー辞書のキャッシュ（保存データが変わったときだけ読み直す）
+    private func userDictEntries() -> [UserDictEntry] {
+        let raw = SharedStore.userDictRawData()
+        if raw != cachedDictRaw {
+            cachedDictRaw = raw
+            cachedEntries = SharedStore.loadUserDict()
+        }
+        return cachedEntries
     }
 
     // MARK: ユーザー辞書
 
     func reloadUserDictionary() {
-        let entries = SharedStore.loadUserDict()
+        let entries = userDictEntries()
         let signature = entries.map { "\($0.reading)=\($0.word)=\($0.partOfSpeech.rawValue)" }
             .joined(separator: "\n")
         guard signature != importedUserDictSignature else { return }
@@ -126,7 +149,7 @@ private final class AzooKeyEngine {
         var seen = Set<String>()
 
         // ユーザー辞書（最優先・長い読みから）
-        let entries = SharedStore.loadUserDict()
+        let entries = userDictEntries()
         if !entries.isEmpty {
             let chars = Array(composing)
             for len in stride(from: chars.count, through: 1, by: -1) {

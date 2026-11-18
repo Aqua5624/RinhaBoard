@@ -76,6 +76,17 @@ final class KeyboardViewController: UIInputViewController {
     private var backspaceTimer: Timer?
     private let feedback = UIImpactFeedbackGenerator(style: .light)
     private var lastStripSignature: String?
+    /// 候補リクエストの世代（古い非同期結果を捨てるため）
+    private var candidateGeneration = 0
+    /// currentCandidates がどの入力文字列に対するものか
+    private var candidatesFor: String = ""
+    private let candidateQueue = DispatchQueue(label: "sparklekey.candidate-queue")
+    /// スペースキーのドラッグによるカーソル移動
+    private var spaceDragApplied = 0
+    private var spaceDragMoved = false
+    private var suppressNextSpaceTap = false
+    /// 自動で Shift を入れたかどうか（手動 Shift と区別する）
+    private var autoShiftArmed = false
 
     // MARK: ライフサイクル
 
@@ -150,6 +161,28 @@ final class KeyboardViewController: UIInputViewController {
         rebuildAll()
     }
 
+    override func textDidChange(_ textInput: UITextInput?) {
+        super.textDidChange(textInput)
+        updateAutoShift()
+    }
+
+    /// 英語モード：文頭と「. 」等の直後では自動で Shift を入れる（標準キーボード風）
+    private func updateAutoShift() {
+        guard lang == .en, mode == .letters, shiftState != .locked else { return }
+        let ctx = textDocumentProxy.documentContextBeforeInput ?? ""
+        let shouldCap = ctx.isEmpty || ctx.hasSuffix(". ") || ctx.hasSuffix("! ")
+            || ctx.hasSuffix("? ") || ctx.hasSuffix("\n")
+        if shouldCap, shiftState == .off {
+            shiftState = .once
+            autoShiftArmed = true
+            rebuildAll()
+        } else if !shouldCap, shiftState == .once, autoShiftArmed {
+            shiftState = .off
+            autoShiftArmed = false
+            rebuildAll()
+        }
+    }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         captureClipboardIfNeeded()
@@ -195,12 +228,7 @@ final class KeyboardViewController: UIInputViewController {
             title: nil,
             action: .toggleClipboard))
 
-        if mode == .letters {
-            toolbar.addArrangedSubview(toolButton(
-                symbol: nil,
-                title: lang == .en ? "あ" : "EN",
-                action: .langToggle))
-        } else if mode == .numbers {
+        if mode == .numbers {
             toolbar.addArrangedSubview(toolButton(
                 symbol: nil,
                 title: SharedStore.numberStyle == .qwerty ? "テンキー" : "123列",
@@ -235,7 +263,7 @@ final class KeyboardViewController: UIInputViewController {
         case .letters:
             base = SharedStore.showNumberRow ? 304 : 262
         case .numbers:
-            base = SharedStore.numberStyle == .tenkey ? 312 : 262
+            base = SharedStore.numberStyle == .tenkey ? 256 : 262
         case .symbols:
             base = 262
         case .clipboard:
@@ -245,8 +273,14 @@ final class KeyboardViewController: UIInputViewController {
         // 候補の出入りでキーボードが伸縮するとキーの位置がずれて打ちにくいため。
         let stripReserved = (lang == .kana && mode == .letters)
         let strip: CGFloat = stripReserved ? 42 : 0
-        heightConstraint?.constant = base + strip
-        stripHeightConstraint?.constant = stripReserved ? 36 : 0
+        // 同じ値の再代入でもレイアウトが走るので、変わるときだけ代入する
+        if heightConstraint?.constant != base + strip {
+            heightConstraint?.constant = base + strip
+        }
+        let stripH: CGFloat = stripReserved ? 36 : 0
+        if stripHeightConstraint?.constant != stripH {
+            stripHeightConstraint?.constant = stripH
+        }
     }
 
     // MARK: 変換候補バー
@@ -266,24 +300,45 @@ final class KeyboardViewController: UIInputViewController {
 
     private func refreshCandidates() {
         let eff = effectiveComposing()
-        if lang == .kana && mode == .letters && !eff.isEmpty {
-            // 学習は azooKey エンジン側が持つので、候補はそのまま使う
-            currentCandidates = KanjiConverter.candidates(for: eff)
-        } else {
-            currentCandidates = []
-        }
-        // 候補列が前回と同じなら再構築しない（打鍵ごとのレイアウト暴れ防止）
-        let signature = eff + "\u{1}" + currentCandidates.map { $0.text }.joined(separator: "\u{2}")
-        if signature != lastStripSignature {
-            let wasEmpty = (lastStripSignature == nil) || lastStripSignature!.hasPrefix("\u{1}")
-            lastStripSignature = signature
-            rebuildStrip()
-            if wasEmpty && !eff.isEmpty {
-                stripScroll.setContentOffset(.zero, animated: false)
-            }
-        }
+        // 表示（入力中のかな）は即時更新する。変換候補の取得は重いので
+        // バックグラウンドで行い、届いたら差し替える（打鍵の反応を遅らせない）
+        applyStrip()
         updateHeight()
         updateToolbarLabel()
+        guard lang == .kana && mode == .letters && !eff.isEmpty else {
+            if !currentCandidates.isEmpty {
+                currentCandidates = []
+                candidatesFor = ""
+                applyStrip()
+            }
+            return
+        }
+        candidateGeneration += 1
+        let gen = candidateGeneration
+        candidateQueue.async { [weak self] in
+            guard let self = self else { return }
+            let cands = KanjiConverter.candidates(for: eff)
+            DispatchQueue.main.async {
+                guard gen == self.candidateGeneration,
+                      eff == self.effectiveComposing() else { return }
+                self.currentCandidates = cands
+                self.candidatesFor = eff
+                self.applyStrip()
+            }
+        }
+    }
+
+    /// 候補バーの再構築（中身が前回と同じなら何もしない）
+    private func applyStrip() {
+        let eff = effectiveComposing()
+        let signature = eff + "\u{1}" + currentCandidates.map { $0.text }.joined(separator: "\u{2}")
+        guard signature != lastStripSignature else { return }
+        let wasEmpty = (lastStripSignature == nil) || (lastStripSignature?.hasPrefix("\u{1}") ?? false)
+        lastStripSignature = signature
+        rebuildStrip()
+        if wasEmpty && !eff.isEmpty {
+            stripScroll.setContentOffset(.zero, animated: false)
+        }
     }
 
     private func rebuildStrip() {
@@ -333,9 +388,12 @@ final class KeyboardViewController: UIInputViewController {
     /// 表示中の候補列（currentCandidates）をそのまま使う（表示と確定の不一致を避ける）。
     private func commitCandidate(at index: Int) {
         materializeComposing()
-        let ordered = currentCandidates.isEmpty
-            ? KanjiConverter.candidates(for: composingKana)
-            : currentCandidates
+        // 非同期取得がまだ追いついていない場合は、その場で同期取得する
+        if candidatesFor != composingKana {
+            currentCandidates = KanjiConverter.candidates(for: composingKana)
+            candidatesFor = composingKana
+        }
+        let ordered = currentCandidates
         guard ordered.indices.contains(index) else { return }
         let cand = ordered[index]
         textDocumentProxy.insertText(cand.text)
@@ -351,10 +409,16 @@ final class KeyboardViewController: UIInputViewController {
         var guardCount = 0
         while !composingKana.isEmpty && guardCount < 64 {
             guardCount += 1
+            let cands = KanjiConverter.candidates(for: composingKana)
+            guard let first = cands.first, first.consumed > 0 else { break }
+            textDocumentProxy.insertText(first.text)
+            KanjiConverter.notifySelected(first)
             let before = composingKana
-            commitCandidate(at: 0)
+            composingKana = String(composingKana.dropFirst(first.consumed))
             if composingKana == before { break }
         }
+        currentCandidates = []
+        candidatesFor = ""
         refreshCandidates()
     }
 
@@ -461,7 +525,36 @@ final class KeyboardViewController: UIInputViewController {
             lp.minimumPressDuration = 0.45
             b.addGestureRecognizer(lp)
         }
+        if case .space = spec.action {
+            // スペースを左右にドラッグでカーソル移動（標準キーボード風）
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(spacePan(_:)))
+            pan.cancelsTouchesInView = false
+            b.addGestureRecognizer(pan)
+        }
         return b
+    }
+
+    @objc private func spacePan(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            spaceDragApplied = 0
+            spaceDragMoved = false
+        case .changed:
+            guard !hasComposing else { return }
+            let dx = gesture.translation(in: view).x
+            let chars = Int(dx / 14)
+            if chars != spaceDragApplied {
+                textDocumentProxy.adjustTextPosition(byCharacterOffset: chars - spaceDragApplied)
+                spaceDragApplied = chars
+            }
+            if abs(dx) > 10 { spaceDragMoved = true }
+        case .ended, .cancelled, .failed:
+            if spaceDragMoved { suppressNextSpaceTap = true }
+            spaceDragApplied = 0
+            spaceDragMoved = false
+        default:
+            break
+        }
     }
 
     private func normalKeyColor() -> UIColor {
@@ -496,15 +589,22 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    private func bottomRow(firstLabel: String, firstAction: KeyAction) -> UIStackView {
-        makeRow([
+    private func bottomRow(firstLabel: String, firstAction: KeyAction, includeLang: Bool = false) -> UIStackView {
+        var specs: [Spec] = [
             Spec(firstLabel, firstAction, weight: 1.5, small: true),
             Spec("", .globe, weight: 1.0, symbol: "globe"),
+        ]
+        if includeLang {
+            // 日本語⇄英語の切替は下段（Gboard と同じ考え方）
+            specs.append(Spec(lang == .en ? "あ" : "EN", .langToggle, weight: 1.1, small: true))
+        }
+        specs += [
             Spec(lang == .kana ? "、" : ",", .text(","), weight: 0.7),
-            Spec(" ", .space, weight: 3.6),
+            Spec(" ", .space, weight: includeLang ? 3.0 : 3.6),
             Spec(lang == .kana ? "。" : ".", .text("."), weight: 0.7),
             Spec(returnLabel(), .returnKey, weight: 1.6, small: true),
-        ])
+        ]
+        return makeRow(specs)
     }
 
     private func returnLabel() -> String {
@@ -532,12 +632,22 @@ final class KeyboardViewController: UIInputViewController {
             })
         }
         contentStack.addArrangedSubview(letterRow("qwertyuiop"))
-        contentStack.addArrangedSubview(letterRow("asdfghjkl"))
+        if lang == .kana {
+            // JIS 配列と同じく L の隣に長音キー（コンピュータ等の入力用）
+            var row2 = "asdfghjkl".map { ch -> Spec in
+                let label = upper ? String(ch).uppercased() : String(ch)
+                return Spec(label, .text(String(ch)))
+            }
+            row2.append(Spec("ー", .text("-")))
+            contentStack.addArrangedSubview(makeRow(row2))
+        } else {
+            contentStack.addArrangedSubview(letterRow("asdfghjkl"))
+        }
         var third: [Spec] = [Spec("", .shift, weight: 1.4, symbol: shiftState == .off ? "shift" : (shiftState == .locked ? "capslock.fill" : "shift.fill"))]
         third += "zxcvbnm".map { Spec(upper ? String($0).uppercased() : String($0), .text(String($0))) }
         third.append(Spec("", .backspace, weight: 1.4, symbol: "delete.left"))
         contentStack.addArrangedSubview(makeRow(third))
-        contentStack.addArrangedSubview(bottomRow(firstLabel: "123", firstAction: .showNumbers))
+        contentStack.addArrangedSubview(bottomRow(firstLabel: "123", firstAction: .showNumbers, includeLang: true))
     }
 
     private func buildNumbersQwerty() {
@@ -700,6 +810,7 @@ final class KeyboardViewController: UIInputViewController {
         case .text(let raw):
             insertTextSmart(raw)
         case .shift:
+            autoShiftArmed = false
             let now = Date()
             if let last = lastShiftTapAt, now.timeIntervalSince(last) < 0.35, shiftState == .once {
                 shiftState = .locked
@@ -711,9 +822,25 @@ final class KeyboardViewController: UIInputViewController {
         case .backspace:
             deleteBackwardSmart()
         case .space:
+            if suppressNextSpaceTap {
+                // スペースのドラッグ（カーソル移動）直後のタップは無視する
+                suppressNextSpaceTap = false
+                return
+            }
             if lang == .kana && mode == .letters && hasComposing {
                 // 変換：先頭候補を確定（残りは入力中のまま）
                 commitCandidate(at: 0)
+            } else if lang == .en && mode == .letters,
+                      let ctx = textDocumentProxy.documentContextBeforeInput,
+                      ctx.hasSuffix(" "), !ctx.hasSuffix("  ") {
+                // 英語：単語の直後でスペースを2回続けて押したら「. 」にする（標準動作）
+                let before = ctx.dropLast()
+                if let last = before.last, last.isLetter || last.isNumber {
+                    textDocumentProxy.deleteBackward()
+                    textDocumentProxy.insertText(". ")
+                } else {
+                    textDocumentProxy.insertText(" ")
+                }
             } else {
                 textDocumentProxy.insertText(" ")
             }
@@ -799,6 +926,11 @@ final class KeyboardViewController: UIInputViewController {
     /// 文字キー：かなモードでは変換バッファへ、英字モードでは Shift を反映して直接挿入
     private func insertTextSmart(_ raw: String) {
         if lang == .kana && mode == .letters {
+            if raw == "-" {
+                composingKana += "ー"
+                refreshCandidates()
+                return
+            }
             if raw == "," {
                 commitConvertedAll()
                 textDocumentProxy.insertText("、")
@@ -826,6 +958,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         // 英字モード（および数字・記号モード）
         if hasComposing { commitRawAll() }
+        if shiftState == .once { autoShiftArmed = false }
         if shiftState != .off, raw.count == 1, raw.first!.isLetter {
             textDocumentProxy.insertText(raw.uppercased())
             if shiftState == .once {
