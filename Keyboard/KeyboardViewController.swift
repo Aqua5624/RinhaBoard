@@ -321,18 +321,6 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    override func selectionDidChange(_ textInput: UITextInput?) {
-        super.selectionDidChange(textInput)
-        guard hasComposing else { return }
-        // 自分のマーク中テキストの直後にカーソルがあるなら何もしない。
-        // それ以外（ユーザーがカーソルを動かした等）は入力中をそのまま
-        // 確定して、内部バッファと入力欄の同期ズレを防ぐ
-        let eff = effectiveComposing()
-        let before = textDocumentProxy.documentContextBeforeInput ?? ""
-        if before.hasSuffix(eff) { return }
-        commitRawAll()
-    }
-
     private func refreshCandidates() {
         updateMarkedText()
         let eff = effectiveComposing()
@@ -457,8 +445,9 @@ final class KeyboardViewController: UIInputViewController {
     private func commitRawAll() {
         materializeComposing()
         if !composingKana.isEmpty {
-            insertCommitted(composingKana)
+            let raw = composingKana
             composingKana = ""
+            insertCommitted(raw)
         }
         refreshCandidates()
     }
