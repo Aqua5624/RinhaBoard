@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Sparkle Key 本体アプリ（設定画面）
 /// キーボードと同じ Material You 風デザイン: 水色グレーの地に白カード、青アクセント
@@ -16,6 +17,12 @@ struct ContentView: View {
     @State private var newReading: String = ""
     @State private var newWord: String = ""
     @State private var newPOS: UserDictPartOfSpeech = .proper
+    @State private var accentIndex: Int = SharedStore.accentIndex
+    @State private var heightScale: Double = SharedStore.keyboardHeightScale
+    @State private var oneHanded: Int = SharedStore.oneHandedMode
+    @State private var exportURL: URL?
+    @State private var showImporter = false
+    @State private var importMessage: String?
 
     // MARK: - パレット
 
@@ -43,7 +50,18 @@ struct ContentView: View {
         })
     }
 
-    private let accent = Color(red: 0.043, green: 0.341, blue: 0.816) // #0B57D0
+    static let accentColors: [Color] = [
+        Color(red: 0.043, green: 0.341, blue: 0.816), // 青 #0B57D0
+        Color(red: 0.48, green: 0.35, blue: 0.90),    // 紫
+        Color(red: 0.85, green: 0.10, blue: 0.38),    // ピンク
+        Color(red: 0.00, green: 0.47, blue: 0.42),    // 緑
+        Color(red: 0.31, green: 0.35, blue: 0.40),    // グレー
+    ]
+    static let accentNames = ["青", "紫", "ピンク", "緑", "グレー"]
+
+    private var accent: Color {
+        Self.accentColors[min(max(accentIndex, 0), Self.accentColors.count - 1)]
+    }
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
@@ -52,11 +70,12 @@ struct ContentView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 18) {
                     headerCard
                     setupCard
                     keyboardCard
                     userDictCard
+                    dataCard
                     clipboardCard
                     notesCard
                     Text("Sparkle Key バージョン \(appVersion)")
@@ -69,6 +88,9 @@ struct ContentView: View {
             .background(boardColor.ignoresSafeArea())
             .navigationTitle("Sparkle Key")
             .onAppear { reload() }
+            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+                handleImport(result)
+            }
         }
         .navigationViewStyle(.stack)
     }
@@ -76,13 +98,13 @@ struct ContentView: View {
     // MARK: - 共通部品
 
     private func card<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             Text(title)
                 .font(.headline)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(18)
         .background(cardColor)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
@@ -103,7 +125,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.body)
                 Text(subtitle)
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundColor(.secondary)
             }
             Spacer()
@@ -144,7 +166,7 @@ struct ContentView: View {
                 Text("Sparkle Key")
                     .font(.title3.weight(.bold))
                 Text("Gboard風の自作キーボード。QWERTYローマ字入力とフリック入力、azooKey＋Zenzai の変換、クリップボード履歴つき。")
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundColor(.secondary)
             }
             Spacer()
@@ -178,13 +200,13 @@ struct ContentView: View {
     private func stepRow(_ n: Int, _ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text("\(n)")
-                .font(.caption.weight(.bold))
+                .font(.footnote.weight(.bold))
                 .foregroundColor(.white)
-                .frame(width: 22, height: 22)
+                .frame(width: 24, height: 24)
                 .background(accent)
                 .clipShape(Circle())
             Text(text)
-                .font(.subheadline)
+                .font(.body)
             Spacer()
         }
     }
@@ -194,11 +216,88 @@ struct ContentView: View {
     private var keyboardCard: some View {
         card(title: "キーボード設定") {
             HStack(spacing: 12) {
+                iconChip("paintpalette.fill", accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("テーマ色")
+                    Text("確定キーやボタンの色です（今は\(Self.accentNames[min(max(accentIndex, 0), 4)])）")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+            }
+            HStack(spacing: 12) {
+                ForEach(0..<Self.accentColors.count, id: \.self) { i in
+                    Button {
+                        accentIndex = i
+                        SharedStore.accentIndex = i
+                    } label: {
+                        Circle()
+                            .fill(Self.accentColors[i])
+                            .frame(width: 34, height: 34)
+                            .overlay(
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .opacity(accentIndex == i ? 1 : 0))
+                            .overlay(
+                                Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            Divider()
+            HStack(spacing: 12) {
+                iconChip("arrow.up.and.down", Color(red: 0.35, green: 0.5, blue: 0.9))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("キーボードの高さ")
+                    Text("今は \(Int(heightScale * 100))% です")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+            }
+            Slider(value: $heightScale, in: 0.85...1.15, step: 0.05)
+                .tint(accent)
+                .onChange(of: heightScale) { _, newValue in
+                    SharedStore.keyboardHeightScale = newValue
+                }
+            Divider()
+            HStack(spacing: 12) {
+                iconChip("sidebar.right", Color(red: 0.5, green: 0.4, blue: 0.85))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("片手モード")
+                    Text("キーボードを左右どちらかに寄せます。キーボード上のボタンでも切り替えできます")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+            }
+            HStack(spacing: 4) {
+                ForEach(0..<3) { i in
+                    Button {
+                        oneHanded = i
+                    } label: {
+                        Text(["オフ", "右寄せ", "左寄せ"][i])
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(oneHanded == i ? cardColor : Color.clear)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(4)
+            .background(fieldColor)
+            .clipShape(Capsule())
+            .onChange(of: oneHanded) { _, newValue in
+                SharedStore.oneHandedMode = newValue
+            }
+            Divider()
+            HStack(spacing: 12) {
                 iconChip("123.rectangle", Color(red: 0.85, green: 0.45, blue: 0.1))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("「123」の並び")
                     Text("テンキーは数字パッド、フリックは12キー入力です")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundColor(.secondary)
                 }
             }
@@ -262,7 +361,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("学習した変換")
                     Text("選んだ候補を覚えて、次から候補の先頭に出します")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundColor(.secondary)
                 }
                 Spacer()
@@ -287,18 +386,18 @@ struct ContentView: View {
     private var userDictCard: some View {
         card(title: "ユーザー辞書（\(userDict.count)件）") {
             Text("登録した単語は変換候補の先頭に出ます。読みはひらがなで入力してください（カタカナでも自動でひらがなになります）。")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundColor(.secondary)
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("読み").font(.caption).foregroundColor(.secondary)
+                    Text("読み").font(.footnote).foregroundColor(.secondary)
                     TextField("れもん", text: $newReading)
                         .padding(10)
                         .background(fieldColor)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("単語").font(.caption).foregroundColor(.secondary)
+                    Text("単語").font(.footnote).foregroundColor(.secondary)
                     TextField("🍋", text: $newWord)
                         .padding(10)
                         .background(fieldColor)
@@ -311,7 +410,7 @@ struct ContentView: View {
                         newPOS = pos
                     } label: {
                         Text(pos.label)
-                            .font(.caption.weight(.medium))
+                            .font(.footnote.weight(.medium))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 7)
                             .background(newPOS == pos ? cardColor : Color.clear)
@@ -350,7 +449,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(entry.word)
                         Text("\(entry.reading) ・ \(entry.partOfSpeech.label)")
-                            .font(.caption)
+                            .font(.footnote)
                             .foregroundColor(.secondary)
                     }
                     Spacer()
@@ -368,12 +467,78 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - データの書き出し・読み込み
+
+    private struct Backup: Codable {
+        var userDictionary: [UserDictEntry]
+        var learnedWords: [LearnedWord]
+    }
+
+    private var dataCard: some View {
+        card(title: "データの書き出し・読み込み") {
+            Text("ユーザー辞書と学習した変換を JSON ファイルに書き出せます。機種変更や入れ直しのときに読み込めば元に戻せます。読み込むと今の辞書と学習は上書きされます。")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+            HStack(spacing: 10) {
+                if let exportURL {
+                    ShareLink(item: exportURL) {
+                        Text("書き出す")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 9)
+                            .background(accent)
+                            .foregroundColor(.white)
+                            .clipShape(Capsule())
+                    }
+                }
+                pillButton(title: "読み込む", filled: false) {
+                    showImporter = true
+                }
+                Spacer()
+            }
+            if let importMessage {
+                Text(importMessage)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private func makeExport() {
+        let backup = Backup(userDictionary: SharedStore.loadUserDict(),
+                            learnedWords: SharedStore.loadLearnedWords())
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(backup) {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("sparklekey-backup.json")
+            if (try? data.write(to: url)) != nil {
+                exportURL = url
+            }
+        }
+    }
+
+    private func handleImport(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        if let data = try? Data(contentsOf: url),
+           let backup = try? JSONDecoder().decode(Backup.self, from: data) {
+            SharedStore.saveUserDict(backup.userDictionary)
+            SharedStore.saveLearnedWords(backup.learnedWords)
+            reload()
+            importMessage = "読み込みました（辞書 \(backup.userDictionary.count)件・学習 \(backup.learnedWords.count)件）"
+        } else {
+            importMessage = "読み込めませんでした。Sparkle Key の書き出しファイルを選んでください"
+        }
+    }
+
     // MARK: - クリップボード
 
     private var clipboardCard: some View {
         card(title: "クリップボード履歴（\(clipItems.count)件）") {
             Text("キーボードを開いたタイミングで自動保存されます（フルアクセス許可時）。タップでコピーできます。")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundColor(.secondary)
             HStack(spacing: 8) {
                 TextField("手動で追加するテキスト", text: $newClipText)
@@ -474,10 +639,14 @@ struct ContentView: View {
             Text(text).foregroundColor(.secondary)
             Spacer()
         }
-        .font(.footnote)
+        .font(.subheadline)
     }
 
     private func reload() {
+        accentIndex = SharedStore.accentIndex
+        heightScale = SharedStore.keyboardHeightScale
+        oneHanded = SharedStore.oneHandedMode
+        makeExport()
         numberStyle = SharedStore.numberStyle
         autoCapture = SharedStore.autoCaptureClipboard
         showNumberRow = SharedStore.showNumberRow

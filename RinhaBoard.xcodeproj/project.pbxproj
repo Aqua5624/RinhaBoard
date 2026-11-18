@@ -11,6 +11,8 @@
 		000000000000000000000015 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000A /* ContentView.swift */; };
 		000000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000D /* Assets.xcassets */; };
 		000000000000000000000042 /* ggml-model-Q5_K_M.gguf in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000041 /* ggml-model-Q5_K_M.gguf */; };
+		000000000000000000000049 /* twemoji-sprite.png in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000048 /* twemoji-sprite.png */; };
+		000000000000000000000051 /* twemoji-index.json in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000050 /* twemoji-index.json */; };
 		000000000000000000000017 /* SharedStore.swift in Sources (app) */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000B /* SharedStore.swift */; };
 		000000000000000000000018 /* RomajiKana.swift in Sources (app) */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000C /* RomajiKana.swift */; };
 		000000000000000000000019 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000F /* KeyboardViewController.swift */; };
@@ -85,6 +87,8 @@
 		000000000000000000000046 /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Keyboard/EmojiData.swift"; sourceTree = "<group>"; };
 		000000000000000000000011 /* RinhaBoardKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Keyboard/RinhaBoardKeyboard.entitlements"; sourceTree = "<group>"; };
 		000000000000000000000041 /* ggml-model-Q5_K_M.gguf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Keyboard/Models/ggml-model-Q5_K_M.gguf"; sourceTree = "<group>"; };
+		000000000000000000000048 /* twemoji-sprite.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Keyboard/EmojiAssets/twemoji-sprite.png"; sourceTree = "<group>"; };
+		000000000000000000000050 /* twemoji-index.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "Keyboard/EmojiAssets/twemoji-index.json"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,6 +158,8 @@
 				000000000000000000000010 /* Info.plist (keyboard) */,
 				000000000000000000000011 /* RinhaBoardKeyboard.entitlements */,
 				000000000000000000000041 /* ggml-model-Q5_K_M.gguf */,
+				000000000000000000000048 /* twemoji-sprite.png */,
+				000000000000000000000050 /* twemoji-index.json */,
 			);
 			name = Keyboard;
 			sourceTree = "<group>";
@@ -255,6 +261,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				000000000000000000000042 /* ggml-model-Q5_K_M.gguf in Resources */,
+				000000000000000000000049 /* twemoji-sprite.png in Resources */,
+				000000000000000000000051 /* twemoji-index.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -330,7 +338,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.6.3;
+				MARKETING_VERSION = 0.7.0;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard;
@@ -357,7 +365,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.6.3;
+				MARKETING_VERSION = 0.7.0;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard;
@@ -382,7 +390,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.6.3;
+				MARKETING_VERSION = 0.7.0;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard.Keyboard;
@@ -407,7 +415,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.6.3;
+				MARKETING_VERSION = 0.7.0;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_BUNDLE_IDENTIFIER = com.aqua5624.RinhaBoard.Keyboard;

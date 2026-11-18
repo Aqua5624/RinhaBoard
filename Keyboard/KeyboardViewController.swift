@@ -22,6 +22,8 @@ enum KeyAction {
     case toggleEmoji
     case emojiInsert(String)
     case emojiCategory(Int)
+    case englishSuggest(String)
+    case oneHandedToggle
     case toggleClipboard
     case saveClipboardNow
     case clearClips
@@ -168,6 +170,26 @@ final class KeyboardViewController: UIInputViewController {
     private weak var returnKeyButton: KBButton?
     private var emojiTabIsRecent = true
     private var emojiCategoryIndex = 0
+    private var emojiScrollView: UIScrollView?
+    private var emojiSectionAnchors: [UIView] = []
+    private var emojiHasRecentSection = false
+
+    // 英語の予測候補（UITextChecker）
+    private var englishWord = ""
+    private var englishSuggestions: [String] = []
+    private let textChecker = UITextChecker()
+
+    // 片手モード用のルート制約
+    private let rootStack = UIStackView()
+    private var rootLeading: NSLayoutConstraint?
+    private var rootTrailing: NSLayoutConstraint?
+
+    // Twemoji スプライト（絵文字パネルの表示用）
+    private var twemojiSprite: UIImage?
+    private var twemojiMap: [String: Int] = [:]
+    private var twemojiCell: Int = 72
+    private var twemojiCols: Int = 20
+    private var twemojiCache: [String: UIImage] = [:]
 
     /// テンキー（フリックパッド）が表示中か
     private var flickActive: Bool {
@@ -247,14 +269,15 @@ final class KeyboardViewController: UIInputViewController {
                 : UIColor(red: 0.925, green: 0.933, blue: 0.945, alpha: 1)
         }
 
-        let root = UIStackView()
+        let root = rootStack
         root.axis = .vertical
         root.spacing = 6
         root.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(root)
+        rootLeading = root.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4)
+        rootTrailing = root.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4)
         NSLayoutConstraint.activate([
-            root.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
-            root.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
+            rootLeading!, rootTrailing!,
             root.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
             root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
         ])
@@ -412,6 +435,11 @@ final class KeyboardViewController: UIInputViewController {
             title: nil,
             action: .toggleCursor))
 
+        toolbar.addArrangedSubview(toolButton(
+            symbol: SharedStore.oneHandedMode == 2 ? "sidebar.left" : "sidebar.right",
+            title: nil,
+            action: .oneHandedToggle))
+
         // クリップボードボタンの隣が変換候補の表示場所
         toolbar.addArrangedSubview(stripScroll)
         stripScroll.isHidden = (mode != .letters) && !flickActive
@@ -445,6 +473,23 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applyOneHanded()
+    }
+
+    /// 片手モード（右寄せ/左寄せ）をルートの左右マージンで実現する
+    private func applyOneHanded() {
+        let w = view.bounds.width
+        guard w > 100, let lead = rootLeading, let trail = rootTrailing else { return }
+        let inset = w * 0.22
+        switch SharedStore.oneHandedMode {
+        case 1: lead.constant = inset + 4; trail.constant = -4
+        case 2: lead.constant = 4; trail.constant = -inset - 4
+        default: lead.constant = 4; trail.constant = -4
+        }
+    }
+
     private func updateHeight() {
         let base: CGFloat
         switch mode {
@@ -462,9 +507,11 @@ final class KeyboardViewController: UIInputViewController {
             base = 312
         }
         // 候補バーはツールバーの中に入ったので、高さはモードの基本値だけ。
-        // 同じ値の再代入でもレイアウトが走るので、変わるときだけ代入する
-        if heightConstraint?.constant != base {
-            heightConstraint?.constant = base
+        // 設定の高さ倍率を掛ける。同じ値の再代入でもレイアウトが走るので、
+        // 変わるときだけ代入する
+        let scaled = base * CGFloat(SharedStore.keyboardHeightScale)
+        if heightConstraint?.constant != scaled {
+            heightConstraint?.constant = scaled
         }
     }
 
@@ -562,6 +609,13 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 候補バーの再構築（中身が前回と同じなら何もしない）
     private func applyStrip() {
+        if mode == .letters && lang == .en {
+            let signature = "EN\u{1}" + englishSuggestions.joined(separator: "\u{2}")
+            guard signature != lastStripSignature else { return }
+            lastStripSignature = signature
+            rebuildStrip()
+            return
+        }
         let eff = effectiveComposing()
         let signature = eff + "\u{1}" + currentCandidates.map { $0.text }.joined(separator: "\u{2}")
         guard signature != lastStripSignature else { return }
@@ -575,6 +629,23 @@ final class KeyboardViewController: UIInputViewController {
 
     private func rebuildStrip() {
         stripStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        if mode == .letters && lang == .en {
+            for word in englishSuggestions {
+                let b = KBButton(type: .system)
+                b.setTitle(word, for: .normal)
+                b.setTitleColor(.label, for: .normal)
+                b.titleLabel?.font = .systemFont(ofSize: 15)
+                b.backgroundColor = .clear
+                b.normalBg = .clear
+                b.pressedBg = pressedKeyColor()
+                b.layer.cornerRadius = 8
+                b.contentEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+                b.action = .englishSuggest(word)
+                b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+                stripStack.addArrangedSubview(b)
+            }
+            return
+        }
         guard !currentCandidates.isEmpty else { return }
 
         for (i, cand) in currentCandidates.enumerated() {
@@ -888,11 +959,50 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// 確定キー用のアクセント（Gboard の検索/確定キーと同じ青）
+    /// テーマ色プリセット（本体アプリの設定と番号を共有）
+    private func accentPair() -> (light: UIColor, dark: UIColor,
+                                  lightPressed: UIColor, darkPressed: UIColor,
+                                  darkTitle: UIColor) {
+        switch SharedStore.accentIndex {
+        case 1: // 紫
+            return (UIColor(red: 0.48, green: 0.35, blue: 0.90, alpha: 1),
+                    UIColor(red: 0.78, green: 0.66, blue: 0.98, alpha: 1),
+                    UIColor(red: 0.40, green: 0.28, blue: 0.78, alpha: 1),
+                    UIColor(red: 0.68, green: 0.55, blue: 0.94, alpha: 1),
+                    UIColor(red: 0.20, green: 0.10, blue: 0.35, alpha: 1))
+        case 2: // ピンク
+            return (UIColor(red: 0.85, green: 0.10, blue: 0.38, alpha: 1),
+                    UIColor(red: 0.98, green: 0.55, blue: 0.72, alpha: 1),
+                    UIColor(red: 0.74, green: 0.07, blue: 0.31, alpha: 1),
+                    UIColor(red: 0.94, green: 0.44, blue: 0.63, alpha: 1),
+                    UIColor(red: 0.35, green: 0.05, blue: 0.16, alpha: 1))
+        case 3: // 緑
+            return (UIColor(red: 0.00, green: 0.47, blue: 0.42, alpha: 1),
+                    UIColor(red: 0.45, green: 0.85, blue: 0.78, alpha: 1),
+                    UIColor(red: 0.00, green: 0.38, blue: 0.34, alpha: 1),
+                    UIColor(red: 0.36, green: 0.76, blue: 0.69, alpha: 1),
+                    UIColor(red: 0.03, green: 0.20, blue: 0.18, alpha: 1))
+        case 4: // グレー
+            return (UIColor(red: 0.31, green: 0.35, blue: 0.40, alpha: 1),
+                    UIColor(red: 0.72, green: 0.76, blue: 0.80, alpha: 1),
+                    UIColor(red: 0.24, green: 0.28, blue: 0.32, alpha: 1),
+                    UIColor(red: 0.62, green: 0.66, blue: 0.71, alpha: 1),
+                    UIColor(red: 0.10, green: 0.11, blue: 0.13, alpha: 1))
+        default: // 青
+            return (UIColor(red: 0.043, green: 0.34, blue: 0.82, alpha: 1),
+                    UIColor(red: 0.54, green: 0.71, blue: 0.97, alpha: 1),
+                    UIColor(red: 0.03, green: 0.27, blue: 0.68, alpha: 1),
+                    UIColor(red: 0.45, green: 0.63, blue: 0.92, alpha: 1),
+                    UIColor(red: 0.06, green: 0.14, blue: 0.30, alpha: 1))
+        }
+    }
+
     private func pillKeyColor() -> UIColor {
-        UIColor { traits in
+        let pair = accentPair()
+        return UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.82, green: 0.82, blue: 0.90, alpha: 1)
-                : UIColor(red: 0.76, green: 0.85, blue: 0.98, alpha: 1)
+                ? pair.dark
+                : pair.light.withAlphaComponent(0.20)
         }
     }
 
@@ -913,26 +1023,23 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func accentKeyColor() -> UIColor {
-        UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.54, green: 0.71, blue: 0.97, alpha: 1)
-                : UIColor(red: 0.043, green: 0.34, blue: 0.82, alpha: 1)
+        let pair = accentPair()
+        return UIColor { traits in
+            traits.userInterfaceStyle == .dark ? pair.dark : pair.light
         }
     }
 
     private func pressedAccentKeyColor() -> UIColor {
-        UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.45, green: 0.63, blue: 0.92, alpha: 1)
-                : UIColor(red: 0.03, green: 0.27, blue: 0.68, alpha: 1)
+        let pair = accentPair()
+        return UIColor { traits in
+            traits.userInterfaceStyle == .dark ? pair.darkPressed : pair.lightPressed
         }
     }
 
     private func accentTitleColor() -> UIColor {
-        UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.06, green: 0.14, blue: 0.30, alpha: 1)
-                : .white
+        let pair = accentPair()
+        return UIColor { traits in
+            traits.userInterfaceStyle == .dark ? pair.darkTitle : .white
         }
     }
 
@@ -1353,49 +1460,78 @@ final class KeyboardViewController: UIInputViewController {
         return EmojiData.categories[emojiCategoryIndex].items
     }
 
+    // MARK: Twemoji（絵文字パネルの表示用スプライト）
+
+    private func loadTwemojiIfNeeded() {
+        guard twemojiSprite == nil else { return }
+        guard let imgURL = Bundle.main.url(forResource: "twemoji-sprite", withExtension: "png"),
+              let img = UIImage(contentsOfFile: imgURL.path),
+              let idxURL = Bundle.main.url(forResource: "twemoji-index", withExtension: "json"),
+              let data = try? Data(contentsOf: idxURL),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let map = obj["map"] as? [String: Int] else { return }
+        twemojiSprite = img
+        twemojiMap = map
+        twemojiCell = obj["cell"] as? Int ?? 72
+        twemojiCols = obj["cols"] as? Int ?? 20
+    }
+
+    private func twemojiImage(for emoji: String) -> UIImage? {
+        loadTwemojiIfNeeded()
+        if let cached = twemojiCache[emoji] { return cached }
+        guard let sprite = twemojiSprite, let cg = sprite.cgImage,
+              let idx = twemojiMap[emoji] else { return nil }
+        let rect = CGRect(x: (idx % twemojiCols) * twemojiCell,
+                          y: (idx / twemojiCols) * twemojiCell,
+                          width: twemojiCell, height: twemojiCell)
+        guard let crop = cg.cropping(to: rect) else { return nil }
+        let image = UIImage(cgImage: crop, scale: sprite.scale, orientation: .up)
+        twemojiCache[emoji] = image
+        return image
+    }
+
     private func buildEmoji() {
-        // カテゴリタブ
+        // カテゴリタブ（タップでそのセクションへスクロールする）
         let tabs = UIStackView()
         tabs.axis = .horizontal
         tabs.distribution = .fillEqually
         tabs.spacing = 2
         tabs.heightAnchor.constraint(equalToConstant: 36).isActive = true
 
-        func tabButton(symbol: String, fallback: String, selected: Bool, action: KeyAction) -> KBButton {
+        func tabButton(symbol: String, fallback: String, fallbackFont: CGFloat = 18, action: KeyAction) -> KBButton {
             let b = KBButton(type: .system)
-            if let img = UIImage(systemName: symbol) {
+            if !symbol.isEmpty, let img = UIImage(systemName: symbol) {
                 b.setImage(img, for: .normal)
-                b.tintColor = selected ? .label : .secondaryLabel
+                b.tintColor = .secondaryLabel
             } else {
                 b.setTitle(fallback, for: .normal)
-                b.titleLabel?.font = .systemFont(ofSize: 18)
-            }
-            if selected {
-                b.backgroundColor = normalKeyColor()
-                b.layer.cornerRadius = 8
+                b.setTitleColor(.secondaryLabel, for: .normal)
+                b.titleLabel?.font = .systemFont(ofSize: fallbackFont)
             }
             b.action = action
             b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
             return b
         }
 
-        let hasRecent = !SharedStore.loadRecentEmoji().isEmpty
-        if hasRecent {
+        let recent = SharedStore.loadRecentEmoji()
+        emojiHasRecentSection = !recent.isEmpty
+        if !recent.isEmpty {
             tabs.addArrangedSubview(tabButton(
-                symbol: "clock", fallback: "🕐",
-                selected: emojiTabIsRecent, action: .emojiCategory(-1)))
+                symbol: "clock", fallback: "🕐", action: .emojiCategory(-1)))
         }
         for (i, cat) in EmojiData.categories.enumerated() {
             tabs.addArrangedSubview(tabButton(
                 symbol: cat.symbol, fallback: cat.fallback,
-                selected: !emojiTabIsRecent && emojiCategoryIndex == i,
+                fallbackFont: cat.wide ? 10 : 18,
                 action: .emojiCategory(i)))
         }
         contentStack.addArrangedSubview(tabs)
 
-        // グリッド（縦スクロール、8列）
+        // 全カテゴリを1つの縦スクロールに並べる（無限スクロール風）
         let scroll = UIScrollView()
         scroll.showsVerticalScrollIndicator = false
+        emojiScrollView = scroll
+        emojiSectionAnchors = []
         let grid = UIStackView()
         grid.axis = .vertical
         grid.spacing = 2
@@ -1408,28 +1544,55 @@ final class KeyboardViewController: UIInputViewController {
             grid.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
             grid.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
         ])
-        let items = currentEmojiItems()
-        let cols = 8
-        for start in stride(from: 0, to: items.count, by: cols) {
-            let row = UIStackView()
-            row.axis = .horizontal
-            row.distribution = .fillEqually
-            row.spacing = 2
-            row.heightAnchor.constraint(equalToConstant: 44).isActive = true
-            for j in 0..<cols {
-                if start + j < items.count {
-                    let e = items[start + j]
-                    let b = KBButton(type: .system)
-                    b.setTitle(e, for: .normal)
-                    b.titleLabel?.font = .systemFont(ofSize: 28)
-                    b.action = .emojiInsert(e)
-                    b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
-                    row.addArrangedSubview(b)
-                } else {
-                    row.addArrangedSubview(UIView())
+
+        func addSection(title: String, items: [String], wide: Bool) {
+            let header = UILabel()
+            header.text = title
+            header.font = .systemFont(ofSize: 12, weight: .semibold)
+            header.textColor = .secondaryLabel
+            header.heightAnchor.constraint(equalToConstant: 22).isActive = true
+            grid.addArrangedSubview(header)
+            emojiSectionAnchors.append(header)
+            let cols = wide ? 3 : 8
+            for start in stride(from: 0, to: items.count, by: cols) {
+                let row = UIStackView()
+                row.axis = .horizontal
+                row.distribution = .fillEqually
+                row.spacing = 2
+                row.heightAnchor.constraint(equalToConstant: 44).isActive = true
+                for j in 0..<cols {
+                    if start + j < items.count {
+                        let e = items[start + j]
+                        let b = KBButton(type: .system)
+                        if wide {
+                            b.setTitle(e, for: .normal)
+                            b.setTitleColor(.label, for: .normal)
+                            b.titleLabel?.font = .systemFont(ofSize: 15)
+                            b.titleLabel?.lineBreakMode = .byTruncatingTail
+                        } else if let img = twemojiImage(for: e) {
+                            b.setImage(img, for: .normal)
+                            b.imageView?.contentMode = .scaleAspectFit
+                            b.imageEdgeInsets = UIEdgeInsets(top: 7, left: 0, bottom: 7, right: 0)
+                        } else {
+                            b.setTitle(e, for: .normal)
+                            b.titleLabel?.font = .systemFont(ofSize: 28)
+                        }
+                        b.action = .emojiInsert(e)
+                        b.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+                        row.addArrangedSubview(b)
+                    } else {
+                        row.addArrangedSubview(UIView())
+                    }
                 }
+                grid.addArrangedSubview(row)
             }
-            grid.addArrangedSubview(row)
+        }
+
+        if !recent.isEmpty {
+            addSection(title: "最近使ったもの", items: recent, wide: false)
+        }
+        for cat in EmojiData.categories {
+            addSection(title: cat.title, items: cat.items, wide: cat.wide)
         }
         contentStack.addArrangedSubview(scroll)
 
@@ -1593,13 +1756,23 @@ final class KeyboardViewController: UIInputViewController {
             textDocumentProxy.insertText(emoji)
             SharedStore.addRecentEmoji(emoji)
         case .emojiCategory(let index):
-            if index < 0 {
-                emojiTabIsRecent = true
-            } else {
-                emojiTabIsRecent = false
-                emojiCategoryIndex = index
+            // 連続スクロール: タブはセクションへのジャンプ
+            let target = index < 0 ? 0 : (emojiHasRecentSection ? index + 1 : index)
+            if emojiSectionAnchors.indices.contains(target),
+               let scroll = emojiScrollView {
+                let y = emojiSectionAnchors[target].frame.minY
+                scroll.setContentOffset(CGPoint(x: 0, y: max(0, y - 2)), animated: true)
             }
-            rebuildContent()
+        case .englishSuggest(let word):
+            for _ in 0..<englishWord.count { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(word + " ")
+            englishWord = ""
+            englishSuggestions = []
+            applyStrip()
+        case .oneHandedToggle:
+            SharedStore.oneHandedMode = (SharedStore.oneHandedMode + 1) % 3
+            applyOneHanded()
+            rebuildToolbar()
         case .toggleClipboard:
             if mode == .clipboard {
                 mode = .letters
@@ -1655,7 +1828,13 @@ final class KeyboardViewController: UIInputViewController {
             }
             refreshCandidates()
         } else {
+            if mode == .letters && lang == .en, !englishWord.isEmpty,
+               let last = (textDocumentProxy.documentContextBeforeInput ?? "").last,
+               last.isASCII && last.isLetter {
+                englishWord.removeLast()
+            }
             textDocumentProxy.deleteBackward()
+            if mode == .letters && lang == .en { updateEnglishSuggestions() }
         }
     }
 
@@ -1704,6 +1883,32 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             textDocumentProxy.insertText(raw)
         }
+        // 英語モードでは入力中の単語を追って予測候補を出す
+        if mode == .letters && lang == .en {
+            if raw.count == 1, let ch = raw.first, ch.isASCII && ch.isLetter {
+                englishWord += raw.lowercased()
+            } else {
+                englishWord = ""
+            }
+            updateEnglishSuggestions()
+        }
+    }
+
+    /// 英語の予測候補をシステム辞書（UITextChecker）から引く
+    private func updateEnglishSuggestions() {
+        guard mode == .letters, lang == .en, englishWord.count >= 2 else {
+            if !englishSuggestions.isEmpty {
+                englishSuggestions = []
+                applyStrip()
+            }
+            return
+        }
+        let word = englishWord
+        let range = NSRange(location: 0, length: (word as NSString).length)
+        let found = textChecker.completions(
+            forPartialWordRange: range, in: word, language: "en_US") ?? []
+        englishSuggestions = Array(found.filter { $0.lowercased() != word }.prefix(3))
+        applyStrip()
     }
 
     @objc private func backspaceLongPress(_ gesture: UILongPressGestureRecognizer) {

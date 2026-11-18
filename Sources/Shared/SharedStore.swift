@@ -154,6 +154,32 @@ enum SharedStore {
 
     /// AI変換（Zenzai）を使うか。本体アプリの設定から切り替え可能。
     /// 拡張がメモリ不足で落ちる場合の切り分け・回避用。デフォルト ON。
+    // MARK: - 見た目（テーマ色・片手モード・高さ）
+
+    private static let keyAccentIndex = "rb_accentIndex_v1"
+    /// テーマ色プリセットの番号（0=青 1=紫 2=ピンク 3=緑 4=グレー）
+    static var accentIndex: Int {
+        get { defaults.integer(forKey: keyAccentIndex) }
+        set { defaults.set(newValue, forKey: keyAccentIndex) }
+    }
+
+    private static let keyOneHanded = "rb_oneHandedMode_v1"
+    /// 片手モード（0=オフ 1=右寄せ 2=左寄せ）
+    static var oneHandedMode: Int {
+        get { defaults.integer(forKey: keyOneHanded) }
+        set { defaults.set(newValue, forKey: keyOneHanded) }
+    }
+
+    private static let keyHeightScale = "rb_keyboardHeightScale_v1"
+    /// キーボードの高さ倍率（0.85〜1.15、未設定なら 1.0）
+    static var keyboardHeightScale: Double {
+        get {
+            let v = defaults.double(forKey: keyHeightScale)
+            return v == 0 ? 1.0 : min(1.15, max(0.85, v))
+        }
+        set { defaults.set(newValue, forKey: keyHeightScale) }
+    }
+
     static var zenzaiEnabled: Bool {
         get {
             if defaults.object(forKey: keyZenzaiEnabled) == nil { return true }
