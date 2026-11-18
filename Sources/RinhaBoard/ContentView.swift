@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var numberStyle: NumberStyle = SharedStore.numberStyle
     @State private var autoCapture: Bool = SharedStore.autoCaptureClipboard
     @State private var showNumberRow: Bool = SharedStore.showNumberRow
+    @State private var zenzaiEnabled: Bool = SharedStore.zenzaiEnabled
     @State private var clipItems: [ClipItem] = SharedStore.loadClipItems()
     @State private var newClipText: String = ""
     @State private var userDict: [UserDictEntry] = SharedStore.loadUserDict()
@@ -81,6 +82,10 @@ struct ContentView: View {
                 SharedStore.numberStyle = newValue
             }
 
+            Toggle("AI変換（Zenzai）を使う", isOn: $zenzaiEnabled)
+                .onChange(of: zenzaiEnabled) { _, newValue in
+                    SharedStore.zenzaiEnabled = newValue
+                }
             Toggle("数字行を常に表示（英字の上）", isOn: $showNumberRow)
                 .onChange(of: showNumberRow) { _, newValue in
                     SharedStore.showNumberRow = newValue
@@ -230,6 +235,7 @@ struct ContentView: View {
         numberStyle = SharedStore.numberStyle
         autoCapture = SharedStore.autoCaptureClipboard
         showNumberRow = SharedStore.showNumberRow
+        zenzaiEnabled = SharedStore.zenzaiEnabled
         clipItems = SharedStore.loadClipItems()
         userDict = SharedStore.loadUserDict()
     }

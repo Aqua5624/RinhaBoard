@@ -33,7 +33,7 @@ enum KanjiConverter {
     static func warmUp() {
         lock.lock()
         defer { lock.unlock() }
-        _ = engine.candidates(for: "あい")
+        _ = engine.candidates(for: "あい", allowZenzai: false)
     }
 
     /// 候補が選択・確定されたことをエンジン（学習）に伝える
@@ -57,6 +57,7 @@ private final class AzooKeyEngine {
     private let converter = KanaKanjiConverter.withDefaultDictionary()
     private var importedUserDictSignature: String = ""
     private var cachedOptions: ConvertRequestOptions?
+    private var cachedZenzaiOptions: ConvertRequestOptions?
     private var cachedDictRaw: Data?
     private var cachedEntries: [UserDictEntry] = []
 
@@ -76,8 +77,9 @@ private final class AzooKeyEngine {
         return dir
     }()
 
-    private func makeOptions() -> ConvertRequestOptions {
-        if let cachedOptions = cachedOptions { return cachedOptions }
+    private func makeOptions(useZenzai: Bool) -> ConvertRequestOptions {
+        if useZenzai, let cached = cachedZenzaiOptions { return cached }
+        if !useZenzai, let cachedOptions = cachedOptions { return cachedOptions }
         let dir = storageDir
         let options = ConvertRequestOptions(
             N_best: 10,
@@ -94,10 +96,10 @@ private final class AzooKeyEngine {
             sharedContainerURL: dir,
             textReplacer: .withDefaultEmojiDictionary(),
             specialCandidateProviders: nil,
-            zenzaiMode: zenzaiMode(),
-            metadata: .init(versionString: "Sparkle Key 0.4.0")
+            zenzaiMode: useZenzai ? zenzaiMode() : .off,
+            metadata: .init(versionString: "Sparkle Key 0.4.1")
         )
-        cachedOptions = options
+        if useZenzai { cachedZenzaiOptions = options } else { cachedOptions = options }
         return options
     }
 
@@ -105,6 +107,7 @@ private final class AzooKeyEngine {
     /// モデルは CI で HuggingFace の公式配布（Miwa-Keita/zenz-v3.2-small-gguf）
     /// から取得して同梱する。無ければ通常変換にフォールバック。
     private func zenzaiMode() -> ConvertRequestOptions.ZenzaiMode {
+        guard SharedStore.zenzaiEnabled else { return .off }
         let weight = Bundle.main.bundleURL
             .appendingPathComponent("ggml-model-Q5_K_M.gguf")
         guard FileManager.default.fileExists(atPath: weight.path) else {
@@ -152,12 +155,17 @@ private final class AzooKeyEngine {
     // MARK: 変換
 
     func candidates(for composing: String) -> [ConversionCandidate] {
+        candidates(for: composing, allowZenzai: true)
+    }
+
+    func candidates(for composing: String, allowZenzai: Bool) -> [ConversionCandidate] {
         guard !composing.isEmpty else { return [] }
         reloadUserDictionary()
 
         var composingText = ComposingText()
         composingText.insertAtCursorPosition(composing, inputStyle: .direct)
-        let results = converter.requestCandidates(composingText, options: makeOptions())
+        let results = converter.requestCandidates(
+            composingText, options: makeOptions(useZenzai: allowZenzai))
 
         var result: [ConversionCandidate] = []
         var seen = Set<String>()

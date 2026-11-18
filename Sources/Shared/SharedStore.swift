@@ -96,6 +96,7 @@ enum SharedStore {
     private static let keyShowNumberRow = "rb_showNumberRow"
     private static let keyLastChangeCount = "rb_lastPasteboardChangeCount"
     private static let keyInputLangKana = "rb_inputLangKana"
+    private static let keyZenzaiEnabled = "rb_zenzaiEnabled"
 
     // MARK: - 設定
 
@@ -133,6 +134,16 @@ enum SharedStore {
             return defaults.bool(forKey: keyInputLangKana)
         }
         set { defaults.set(newValue, forKey: keyInputLangKana) }
+    }
+
+    /// AI変換（Zenzai）を使うか。本体アプリの設定から切り替え可能。
+    /// 拡張がメモリ不足で落ちる場合の切り分け・回避用。デフォルト ON。
+    static var zenzaiEnabled: Bool {
+        get {
+            if defaults.object(forKey: keyZenzaiEnabled) == nil { return true }
+            return defaults.bool(forKey: keyZenzaiEnabled)
+        }
+        set { defaults.set(newValue, forKey: keyZenzaiEnabled) }
     }
 
     static var lastPasteboardChangeCount: Int {
