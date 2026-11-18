@@ -21,6 +21,18 @@ enum UserDictPartOfSpeech: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// 学習した変換の1件（読み→選んだ表記）
+struct LearnedWord: Codable, Identifiable, Equatable {
+    var id: String { reading + "\u{1}" + word }
+    /// 読み（ひらがな）
+    var reading: String
+    /// ユーザーが選んだ表記
+    var word: String
+    /// 選ばれた回数
+    var count: Int = 1
+    var lastUsed: Date = Date()
+}
+
 /// ユーザー辞書の1件
 struct UserDictEntry: Codable, Identifiable, Equatable {
     var id: UUID = UUID()
@@ -224,6 +236,53 @@ enum SharedStore {
             return [:]
         }
         return map
+    }
+
+    // MARK: - 学習（選択した変換を覚える）
+
+    private static let keyLearnedWords = "rb_learnedWords_v1"
+
+    /// 学習の保存データそのもの（変更検知用）
+    static func learnedWordsRawData() -> Data? {
+        defaults.data(forKey: keyLearnedWords)
+    }
+
+    /// 学習一覧。よく選ぶ順（回数→新しい順）で返す
+    static func loadLearnedWords() -> [LearnedWord] {
+        guard let data = defaults.data(forKey: keyLearnedWords),
+              let items = try? JSONDecoder().decode([LearnedWord].self, from: data) else {
+            return []
+        }
+        return items.sorted {
+            $0.count != $1.count ? $0.count > $1.count : $0.lastUsed > $1.lastUsed
+        }
+    }
+
+    static func saveLearnedWords(_ items: [LearnedWord]) {
+        if let data = try? JSONEncoder().encode(items) {
+            defaults.set(data, forKey: keyLearnedWords)
+        }
+    }
+
+    /// 変換が確定したときに呼ぶ。同じ読み→表記の組は回数を増やす（上限500件）。
+    static func recordLearned(reading: String, word: String) {
+        guard !reading.isEmpty, !word.isEmpty else { return }
+        var items = loadLearnedWords()
+        if let i = items.firstIndex(where: { $0.reading == reading && $0.word == word }) {
+            items[i].count += 1
+            items[i].lastUsed = Date()
+        } else {
+            items.append(LearnedWord(reading: reading, word: word))
+        }
+        items.sort {
+            $0.count != $1.count ? $0.count > $1.count : $0.lastUsed > $1.lastUsed
+        }
+        if items.count > 500 { items = Array(items.prefix(500)) }
+        saveLearnedWords(items)
+    }
+
+    static func clearLearnedWords() {
+        defaults.removeObject(forKey: keyLearnedWords)
     }
 
     // MARK: - ユーザー辞書

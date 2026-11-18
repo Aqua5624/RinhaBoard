@@ -35,11 +35,11 @@ enum KanjiConverter {
         _ = engine.candidates(for: "あい", allowZenzai: false)
     }
 
-    /// 候補が選択・確定されたことをエンジン（学習）に伝える
-    static func notifySelected(_ candidate: ConversionCandidate) {
+    /// 候補が選択・確定されたことを学習に伝える（reading は消費した読み）
+    static func notifySelected(_ candidate: ConversionCandidate, reading: String) {
         lock.lock()
         defer { lock.unlock() }
-        engine.notifySelected(candidate)
+        engine.notifySelected(candidate, reading: reading)
     }
 
     /// ユーザー辞書が変わったときに呼び直す
@@ -116,6 +116,19 @@ private final class AzooKeyEngine {
                    versionDependentMode: .v3(.init()))
     }
 
+    private var cachedLearnedRaw: Data?
+    private var cachedLearned: [LearnedWord] = []
+
+    /// 学習データのキャッシュ（保存データが変わったときだけ読み直す）
+    private func learnedWords() -> [LearnedWord] {
+        let raw = SharedStore.learnedWordsRawData()
+        if raw != cachedLearnedRaw {
+            cachedLearnedRaw = raw
+            cachedLearned = SharedStore.loadLearnedWords()
+        }
+        return cachedLearned
+    }
+
     /// ユーザー辞書のキャッシュ（保存データが変わったときだけ読み直す）
     private func userDictEntries() -> [UserDictEntry] {
         let raw = SharedStore.userDictRawData()
@@ -184,6 +197,21 @@ private final class AzooKeyEngine {
             }
         }
 
+        // 学習した変換（ユーザー辞書の次に優先。よく選ぶものから）
+        let learned = learnedWords()
+        if !learned.isEmpty {
+            let chars = Array(composing)
+            for len in stride(from: chars.count, through: 1, by: -1) {
+                let prefix = String(chars.prefix(len))
+                for entry in learned where entry.reading == prefix {
+                    guard !seen.contains(entry.word) else { continue }
+                    seen.insert(entry.word)
+                    result.append(ConversionCandidate(
+                        text: entry.word, consumed: len))
+                }
+            }
+        }
+
         func appendAzoo(_ candidate: Candidate) {
             guard candidate.inputable else { return }
             let text = candidate.text
@@ -216,10 +244,18 @@ private final class AzooKeyEngine {
         return Array(result.prefix(24))
     }
 
-    func notifySelected(_ candidate: ConversionCandidate) {
-        guard let azoo = candidate.azooCandidate else { return }
-        converter.setCompletedData(azoo)
-        converter.commitUpdateLearningData()
+    func notifySelected(_ candidate: ConversionCandidate, reading: String) {
+        // エンジン側の学習（文脈込みの順位付けに効く）
+        if let azoo = candidate.azooCandidate {
+            converter.setCompletedData(azoo)
+            converter.commitUpdateLearningData()
+        }
+        // アプリ側の学習（読み→選んだ表記）。かな・カタカナそのままと
+        // ユーザー辞書（登録済み）は対象外。次回から候補の先頭に出す。
+        guard !candidate.isUserDict,
+              candidate.text != reading,
+              candidate.text != reading.katakanaConverted() else { return }
+        SharedStore.recordLearned(reading: reading, word: candidate.text)
     }
 
     /// ComposingCount から入力文字数の合計を取り出す

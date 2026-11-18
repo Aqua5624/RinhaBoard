@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var clipItems: [ClipItem] = SharedStore.loadClipItems()
     @State private var newClipText: String = ""
     @State private var userDict: [UserDictEntry] = SharedStore.loadUserDict()
+    @State private var learnedCount: Int = SharedStore.loadLearnedWords().count
     @State private var newReading: String = ""
     @State private var newWord: String = ""
     @State private var newPOS: UserDictPartOfSpeech = .proper
@@ -95,6 +96,19 @@ struct ContentView: View {
                 .onChange(of: autoCapture) { _, newValue in
                     SharedStore.autoCaptureClipboard = newValue
                 }
+
+            HStack {
+                Text("学習した変換")
+                Spacer()
+                Text("\(learnedCount)件")
+                    .foregroundStyle(.secondary)
+            }
+            if learnedCount > 0 {
+                Button("学習をリセット", role: .destructive) {
+                    SharedStore.clearLearnedWords()
+                    learnedCount = 0
+                }
+            }
         }
     }
 
@@ -238,5 +252,6 @@ struct ContentView: View {
         zenzaiEnabled = SharedStore.zenzaiEnabled
         clipItems = SharedStore.loadClipItems()
         userDict = SharedStore.loadUserDict()
+        learnedCount = SharedStore.loadLearnedWords().count
     }
 }

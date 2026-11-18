@@ -416,8 +416,9 @@ final class KeyboardViewController: UIInputViewController {
         guard ordered.indices.contains(index) else { return }
         let cand = ordered[index]
         insertCommitted(cand.text)
-        // azooKey エンジン側の学習へ通知（ユーザ辞書・自前候補は対象外）
-        KanjiConverter.notifySelected(cand)
+        // 学習へ通知（消費した読みとセットで）
+        KanjiConverter.notifySelected(
+            cand, reading: String(composingKana.prefix(cand.consumed)))
         composingKana = String(composingKana.dropFirst(cand.consumed))
         refreshCandidates()
     }
@@ -431,7 +432,8 @@ final class KeyboardViewController: UIInputViewController {
             let cands = KanjiConverter.candidates(for: composingKana)
             guard let first = cands.first, first.consumed > 0 else { break }
             insertCommitted(first.text)
-            KanjiConverter.notifySelected(first)
+            KanjiConverter.notifySelected(
+                first, reading: String(composingKana.prefix(first.consumed)))
             let before = composingKana
             composingKana = String(composingKana.dropFirst(first.consumed))
             if composingKana == before { break }
@@ -840,7 +842,8 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         insertCommitted(cand.text)
-        KanjiConverter.notifySelected(cand)
+        KanjiConverter.notifySelected(
+            cand, reading: String(composingKana.prefix(cand.consumed)))
         composingKana = String(composingKana.dropFirst(cand.consumed))
         refreshCandidates()
     }
