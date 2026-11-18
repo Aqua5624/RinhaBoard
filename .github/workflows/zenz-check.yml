@@ -32,6 +32,6 @@ jobs:
         run: |
           for m in v3-small v31-xsmall v32-xsmall; do
             echo "===== $m ====="
-            /tmp/zenzcheck /tmp/models/$m.gguf 2>&1 | tail -6
+            /tmp/zenzcheck /tmp/models/$m.gguf 2>&1
             echo "exit: ${PIPESTATUS[0]}"
           done
