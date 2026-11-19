@@ -67,22 +67,22 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP" Payload/
-          zip -r SparkleKey-unsigned-v0.7.4.ipa Payload
-          ls -lh SparkleKey-unsigned-v0.7.4.ipa
+          zip -r SparkleKey-unsigned-v0.7.5.ipa Payload
+          ls -lh SparkleKey-unsigned-v0.7.5.ipa
 
       - name: Upload IPA artifact
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: SparkleKey-unsigned
-          path: SparkleKey-unsigned-v0.7.4.ipa
+          path: SparkleKey-unsigned-v0.7.5.ipa
           retention-days: 14
 
       - name: Publish IPA as release asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          IPA="SparkleKey-unsigned-v0.7.4.ipa"
+          IPA="SparkleKey-unsigned-v0.7.5.ipa"
           TAG="v$(echo "$IPA" | sed -E 's/.*-v([0-9]+\.[0-9]+\.[0-9]+)\.ipa/\1/')"
           echo "Publishing $IPA to release $TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then

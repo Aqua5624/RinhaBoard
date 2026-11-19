@@ -463,6 +463,7 @@ final class KeyboardViewController: UIInputViewController {
         // クリップボードボタンの隣が変換候補の表示場所（右端に一覧ボタン）
         let stripBox = UIStackView(arrangedSubviews: [stripScroll, stripExpandButton])
         stripBox.axis = .horizontal
+        stripBox.alignment = .center
         stripBox.spacing = 2
         toolbar.addArrangedSubview(stripBox)
         stripScroll.isHidden = (mode != .letters) && !flickActive
@@ -693,7 +694,7 @@ final class KeyboardViewController: UIInputViewController {
                 let b = KBButton(type: .system)
                 b.setTitle(word, for: .normal)
                 b.setTitleColor(.label, for: .normal)
-                b.titleLabel?.font = .systemFont(ofSize: 15)
+                b.titleLabel?.font = .systemFont(ofSize: 17)
                 b.backgroundColor = .clear
                 b.normalBg = .clear
                 b.pressedBg = pressedKeyColor()
@@ -711,7 +712,7 @@ final class KeyboardViewController: UIInputViewController {
             let b = KBButton(type: .system)
             b.setTitle(cand.text, for: .normal)
             b.setTitleColor(.label, for: .normal)
-            b.titleLabel?.font = .systemFont(ofSize: 15)
+            b.titleLabel?.font = .systemFont(ofSize: 17)
             b.backgroundColor = .clear
             b.normalBg = .clear
             b.pressedBg = pressedKeyColor()
@@ -1532,7 +1533,7 @@ final class KeyboardViewController: UIInputViewController {
         ])
 
         // 候補を文字幅で測って行に詰める（標準キーボードの折り返し方）
-        let font = UIFont.systemFont(ofSize: 19)
+        let font = UIFont.systemFont(ofSize: 22)
         let panelWidth = (view.bounds.width > 0 ? view.bounds.width
                           : UIScreen.main.bounds.width) - 4
         var rows: [[Int]] = []
@@ -1582,7 +1583,7 @@ final class KeyboardViewController: UIInputViewController {
             rowStack.axis = .horizontal
             rowStack.distribution = .fillEqually
             for i in rowIdxs { rowStack.addArrangedSubview(candidateButton(i)) }
-            rowStack.heightAnchor.constraint(equalToConstant: 54).isActive = true
+            rowStack.heightAnchor.constraint(equalToConstant: 58).isActive = true
             if r == 0 {
                 let chevron = KBButton(type: .system)
                 chevron.setImage(UIImage(systemName: "chevron.up"), for: .normal)
@@ -1593,6 +1594,7 @@ final class KeyboardViewController: UIInputViewController {
                 chevron.widthAnchor.constraint(equalToConstant: 46).isActive = true
                 let topRow = UIStackView(arrangedSubviews: [rowStack, chevron])
                 topRow.axis = .horizontal
+                topRow.alignment = .center
                 list.addArrangedSubview(topRow)
             } else {
                 list.addArrangedSubview(rowStack)
@@ -1629,9 +1631,14 @@ final class KeyboardViewController: UIInputViewController {
 
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        var info = "Sparkle Key \(version) / 設定共有 \(SharedStore.groupAvailable ? "OK" : "NG")"
+        if !SharedStore.groupAvailable {
+            info += SharedStore.profileFound
+                ? " / ID…\(SharedStore.appGroupID.suffix(16))"
+                : " / profile×"
+        }
         let infoRow = makeRow([
-            Spec("Sparkle Key \(version) / 設定共有 \(SharedStore.groupAvailable ? "OK" : "NG")",
-                 .noop, small: true),
+            Spec(info, .noop, small: true),
         ])
         infoRow.heightAnchor.constraint(equalToConstant: 40).isActive = true
         contentStack.addArrangedSubview(infoRow)
@@ -1760,7 +1767,7 @@ final class KeyboardViewController: UIInputViewController {
                         if wide {
                             b.setTitle(e, for: .normal)
                             b.setTitleColor(.label, for: .normal)
-                            b.titleLabel?.font = .systemFont(ofSize: 15)
+                            b.titleLabel?.font = .systemFont(ofSize: 17)
                             b.titleLabel?.lineBreakMode = .byTruncatingTail
                         } else if let img = twemojiImage(for: e) {
                             b.setImage(img, for: .normal)

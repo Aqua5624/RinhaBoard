@@ -108,13 +108,15 @@ enum NumberStyle: String, CaseIterable, Identifiable {
 /// その場合でもキーボード単体での履歴保存・挿入はそのまま動く。
 enum SharedStore {
     /// 実際に使える App Group ID。
-    /// AltStore 等で再署名されるとグループ ID がチーム付きに書き換わるため、
-    /// embedded.mobileprovision の Entitlements から実物を読む。
-    /// 読めない環境（未署名ビルド等）ではプロジェクト既定の ID を使う。
-    static let appGroupID: String = discoverAppGroupID()
+    /// AltStore 等で再署名されるとグループ ID がチーム付きに書き換わる。
+    /// embedded.mobileprovision から候補を集め（プロファイル記載のグループ、
+    /// チーム ID を付けた形、元の ID）、containerURL が通るものを採用する。
+    static let appGroupID: String = resolveAppGroupID()
 
-    private static func discoverAppGroupID() -> String {
-        let fallback = "group.com.aqua5624.RinhaBoard"
+    /// プロファイルが読めたか（診断表示用）
+    static let profileFound: Bool = loadProfilePlist() != nil
+
+    private static func loadProfilePlist() -> [String: Any]? {
         var urls = [Bundle.main.bundleURL
             .appendingPathComponent("embedded.mobileprovision")]
         // 拡張（.appex）からは2つ上が .app 本体
@@ -132,14 +134,34 @@ enum SharedStore {
                   let obj = try? PropertyListSerialization.propertyList(
                     from: xmlData,
                     options: PropertyListSerialization.ReadOptions(),
-                    format: nil) as? [String: Any],
-                  let entitlements = obj["Entitlements"] as? [String: Any],
-                  let groups = entitlements[
-                    "com.apple.security.application-groups"] as? [String],
-                  let group = groups.first else { continue }
-            return group
+                    format: nil) as? [String: Any] else { continue }
+            return obj
         }
-        return fallback
+        return nil
+    }
+
+    private static func resolveAppGroupID() -> String {
+        let original = "group.com.aqua5624.RinhaBoard"
+        var candidates: [String] = []
+        if let plist = loadProfilePlist() {
+            if let entitlements = plist["Entitlements"] as? [String: Any],
+               let groups = entitlements[
+                "com.apple.security.application-groups"] as? [String] {
+                candidates.append(contentsOf: groups)
+            }
+            if let teams = plist["TeamIdentifier"] as? [String],
+               let team = teams.first {
+                candidates.append("group.\(team).com.aqua5624.RinhaBoard")
+            }
+        }
+        candidates.append(original)
+        for c in candidates {
+            if FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: c) != nil {
+                return c
+            }
+        }
+        return candidates.first ?? original
     }
 
     /// App Group の共有コンテナが本当に使えるか。
