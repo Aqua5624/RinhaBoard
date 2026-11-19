@@ -205,7 +205,9 @@ final class KeyboardViewController: UIInputViewController {
     /// 変換中のかなを入力欄・候補バーに表示すべき状態か
     /// （ローマ字入力中か、フリック入力中）
     private var composingActive: Bool {
-        (lang == .kana && mode == .letters) || flickActive
+        // 候補一覧を開いている間も変換は継続中（マーク表示を消さない）
+        (lang == .kana && (mode == .letters || mode == .candidateList))
+            || flickActive
     }
 
     private func flickPreview(_ button: KBButton, text: String?) {
